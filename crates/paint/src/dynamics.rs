@@ -840,6 +840,7 @@ impl DabBuilder {
                 proj_scale,
                 wet,
                 mix,
+                tip: b.tip_order.pick(i, 1 + b.tips.len(), seed),
             });
         }
     }
@@ -895,6 +896,7 @@ impl DualBuilder {
                 proj_scale: 1.0,
                 wet: 1.0,
                 mix: 1.0,
+                tip: 0,
             });
         }
     }

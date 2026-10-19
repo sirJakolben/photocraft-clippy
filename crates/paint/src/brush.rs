@@ -237,6 +237,46 @@ impl TipShape {
     }
 }
 
+/// Most tips a brush cycles through ([`BrushSettings::tips`] plus its own); further ones are
+/// ignored.
+pub const MAX_TIPS: usize = 64;
+
+/// In what order the dabs take a brush's tips (Clip Studio Paint's tip order).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TipOrder {
+    /// First to last, then from the first again.
+    #[default]
+    Repeat,
+    /// First to last and back.
+    RoundTrip,
+    /// A random tip per dab (from the stroke's seed).
+    Random,
+}
+
+impl TipOrder {
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+
+    /// The tip (0 = the brush's own, `k` = `tips[k - 1]`) of dab `index` among `n` tips.
+    pub fn pick(self, index: u64, n: usize, seed: u64) -> u16 {
+        let n = n.clamp(1, MAX_TIPS) as u64;
+        if n == 1 {
+            return 0;
+        }
+        let k = match self {
+            TipOrder::Repeat => index % n,
+            TipOrder::RoundTrip => {
+                let k = index % (2 * n - 2);
+                if k < n { k } else { 2 * n - 2 - k }
+            }
+            TipOrder::Random => ((crate::rng::rand01(seed, index, crate::rng::stream::TIP) * n as f32) as u64).min(n - 1),
+        };
+        k as u16
+    }
+}
+
 /// Shape Dynamics.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -746,6 +786,12 @@ pub struct BrushSettings {
     pub mode: BlendMode,
     // --- Brush Tip Shape ---
     pub tip: TipShape,
+    /// Further tips after `tip` (Clip Studio Paint's tip list): the dabs take `tip` and these in
+    /// `tip_order`; at most [`MAX_TIPS`] in all. Empty by default and then not written to JSON.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub tips: Vec<TipShape>,
+    #[serde(skip_serializing_if = "TipOrder::is_default")]
+    pub tip_order: TipOrder,
     /// Degrees, counter-clockwise.
     pub angle: f32,
     /// 0..1 (1 = circle).
@@ -830,6 +876,8 @@ impl Default for BrushSettings {
             erase: false,
             mode: BlendMode::Normal,
             tip: TipShape::Round,
+            tips: Vec::new(),
+            tip_order: TipOrder::Repeat,
             angle: 0.0,
             roundness: 1.0,
             flip_x: false,

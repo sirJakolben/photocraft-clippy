@@ -177,6 +177,8 @@ pub fn texture_combine(mode: MaskMode, v: f32, t: f32, d: f32) -> f32 {
 pub struct BrushContext {
     pub brush: BrushSettings,
     tip: Option<Arc<Mips>>,
+    /// The mips of `brush.tips` (`None` for a computed one), at most [`crate::brush::MAX_TIPS`].
+    tips: Vec<Option<Arc<Mips>>>,
     dual_tip: Option<Arc<Mips>>,
     texture: Option<Arc<PatternImage>>,
     /// The primary tip's narrowest anti-aliased edge ([`aa_edge_px`]).
@@ -224,6 +226,7 @@ impl BrushContext {
         };
         Self {
             tip: mips(&brush.tip),
+            tips: brush.tips.iter().take(crate::brush::MAX_TIPS - 1).map(mips).collect(),
             dual_tip: if brush.dual_brush.enabled { mips(&brush.dual_brush.tip) } else { None },
             texture: prepare_pattern(&brush.texture),
             edge: aa_edge_px(brush.aa_level),
@@ -251,9 +254,19 @@ impl BrushContext {
         wet_factor_with(rn, self.wet)
     }
 
+    /// The prepared bitmap of the primary tip a dab takes ([`Dab::tip`]); `None` for a computed
+    /// tip. An index past the brush's tips takes its own.
+    #[inline]
+    fn tip_mips(&self, tip: u16) -> Option<&Mips> {
+        match tip {
+            0 => self.tip.as_deref(),
+            k => self.tips.get(usize::from(k) - 1).map_or(self.tip.as_deref(), |m| m.as_deref()),
+        }
+    }
+
     /// Bounding rectangle of a dab (rotated sampled tips need the corner reach).
     pub fn dab_rect(&self, d: &Dab, dual: bool) -> Rect {
-        let sampled = if dual { self.dual_tip.is_some() } else { self.tip.is_some() };
+        let sampled = if dual { self.dual_tip.is_some() } else { self.tip_mips(d.tip).is_some() };
         let hardness = if dual { self.brush.dual_brush.hardness } else { self.brush.hardness };
         // A computed soft tip paints past its nominal radius (see `tip_shape`).
         let aliased = self.brush.is_aliased() && !dual;
@@ -291,7 +304,7 @@ impl BrushContext {
             dp.resize(w * h, 0.0);
         }
         let b = &self.brush;
-        let (hardness, mips) = if dual { (b.dual_brush.hardness, self.dual_tip.as_deref()) } else { (b.hardness, self.tip.as_deref()) };
+        let (hardness, mips) = if dual { (b.dual_brush.hardness, self.dual_tip.as_deref()) } else { (b.hardness, self.tip_mips(d.tip)) };
         let aliased = b.is_aliased() && !dual;
         let edge = self.edge_for(dual);
         let wet = b.wet_edges && !dual && depth.is_none();

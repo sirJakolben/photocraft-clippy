@@ -34,8 +34,9 @@ pub mod symmetry;
 pub mod tile;
 
 pub use brush::{
-    BrushPreset, BrushSettings, ColorDynamics, Control, Controls, DualBrush, Dynamic, Influence, MAX_BRUSH_SIZE, MAX_EXTRA_CONTROLS, MAX_SCATTER, MaskMode,
-    Pattern, PatternStyle, Pose, PresetCaptures, Scattering, SectionLocks, ShapeDynamics, Smoothing, SpeedSmoothing, Taper, Texture, TipShape, Transfer,
+    BrushPreset, BrushSettings, ColorDynamics, Control, Controls, DualBrush, Dynamic, Influence, MAX_BRUSH_SIZE, MAX_EXTRA_CONTROLS, MAX_SCATTER, MAX_TIPS,
+    MaskMode, Pattern, PatternStyle, Pose, PresetCaptures, Scattering, SectionLocks, ShapeDynamics, Smoothing, SpeedSmoothing, Taper, Texture, TipOrder,
+    TipShape, Transfer, WetEdge,
 };
 pub use curve::ResponseCurve;
 pub use mixer::MixerSettings;
@@ -106,6 +107,8 @@ pub struct Dab {
     /// Mixer Brush multipliers of Wet and Mix (Transfer › Wetness/Mix Jitter), 1 = as set.
     pub wet: f32,
     pub mix: f32,
+    /// Which tip paints the dab: 0 = the brush's `tip`, `k` = its `tips[k - 1]`.
+    pub tip: u16,
 }
 
 impl Dab {
@@ -127,6 +130,7 @@ impl Dab {
             proj_scale: 1.0,
             wet: 1.0,
             mix: 1.0,
+            tip: 0,
         }
     }
 }

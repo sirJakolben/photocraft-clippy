@@ -492,3 +492,46 @@ fn the_wet_edge_shape_sets_interior_and_rim() {
     }
     assert!(json(&brush()).get("wetEdge").is_none());
 }
+
+// ---------- several tips ----------
+
+#[test]
+fn tip_orders_pick_tips_in_turn_back_and_forth_or_at_random() {
+    let picks = |o: TipOrder, n: usize| (0..8).map(|i| o.pick(i, n, 9)).collect::<Vec<u16>>();
+    assert_eq!(picks(TipOrder::Repeat, 3), [0, 1, 2, 0, 1, 2, 0, 1]);
+    assert_eq!(picks(TipOrder::RoundTrip, 3), [0, 1, 2, 1, 0, 1, 2, 1]);
+    assert_eq!(picks(TipOrder::RoundTrip, 2), [0, 1, 0, 1, 0, 1, 0, 1]);
+    let random = picks(TipOrder::Random, 3);
+    assert!(random.iter().all(|&t| t < 3) && random.iter().any(|&t| t != random[0]), "{random:?}");
+    assert_eq!(random, picks(TipOrder::Random, 3), "deterministic per seed");
+    for o in [TipOrder::Repeat, TipOrder::RoundTrip, TipOrder::Random] {
+        assert!(picks(o, 1).iter().chain(&picks(o, 0)).all(|&t| t == 0), "one tip (or none) is always the brush's own");
+        assert!((0..500).all(|i| usize::from(o.pick(i, 10_000, 1)) < MAX_TIPS), "capped at {MAX_TIPS}");
+    }
+}
+
+#[test]
+fn dabs_paint_with_the_tip_they_take() {
+    let square = TipShape::Sampled(crate::tile::GrayTile::from_fn(8, 8, |_, _| 1.0));
+    let b = BrushSettings { tips: vec![square], spacing: 2.0, ..brush() };
+    let d = all_dabs(&b, &timed_line(0.0), 1.0);
+    assert_eq!(d.iter().map(|d| d.tip).take(4).collect::<Vec<_>>(), [0, 1, 0, 1]);
+    let ctx = BrushContext::new(&b);
+    let coverage = |dab: &Dab| {
+        let r = ctx.dab_rect(dab, false);
+        let mut v = Vec::new();
+        ctx.rasterize(dab, false, r, &mut v);
+        v.iter().filter(|&&c| c > 0.5).count()
+    };
+    let (round, sq) = (coverage(&d[0]), coverage(&d[1]));
+    // A 20 px disc covers ~314 px, a 20 px square 400.
+    assert!(round < 340 && sq > 380, "{round} {sq}");
+    // A tip index past the list (from a hand-made dab) paints with the brush's own tip.
+    assert_eq!(coverage(&Dab { tip: 999, ..d[0] }), round);
+    // Without further tips every dab takes tip 0 and the JSON is as before.
+    assert!(all_dabs(&brush(), &timed_line(0.0), 1.0).iter().all(|d| d.tip == 0));
+    let v = json(&brush());
+    assert!(v.get("tips").is_none() && v.get("tipOrder").is_none());
+    let back: BrushSettings = serde_json::from_value(json(&BrushSettings { tip_order: TipOrder::RoundTrip, ..b.clone() })).unwrap();
+    assert_eq!((back.tips.len(), back.tip_order), (1, TipOrder::RoundTrip));
+}

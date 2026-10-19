@@ -13,7 +13,7 @@ impl BrushContext {
             dp.resize(w * h, 0.0);
         }
         let b = &self.brush;
-        let (hardness, mips) = if dual { (b.dual_brush.hardness, self.dual_tip.as_deref()) } else { (b.hardness, self.tip.as_deref()) };
+        let (hardness, mips) = if dual { (b.dual_brush.hardness, self.dual_tip.as_deref()) } else { (b.hardness, self.tip_mips(d.tip)) };
         let aliased = b.is_aliased() && !dual;
         let edge = self.edge_for(dual);
         let wet = b.wet_edges && !dual && depth.is_none();
@@ -271,5 +271,16 @@ fn wet_edge_shapes_match_scalar_bits() {
             let d = Dab::round(Point::new(20.5, 20.25), 12.0, 0.8);
             compare(&ctx, &d, false, ctx.dab_rect(&d, false), with_depth);
         }
+    }
+}
+
+#[test]
+fn further_tips_match_scalar_bits() {
+    let tip = GrayTile::from_fn(6, 9, |x, y| ((x * 2 + y) % 5) as f32 / 4.0);
+    let b = BrushSettings { tips: vec![TipShape::Round, TipShape::Sampled(tip)], hardness: 0.4, ..Default::default() };
+    let ctx = BrushContext::new(&b);
+    for t in [0, 1, 2, 3, u16::MAX] {
+        let d = Dab { tip: t, angle: 0.4, ..Dab::round(Point::new(9.5, 4.25), 7.0, 0.9) };
+        compare(&ctx, &d, false, ctx.dab_rect(&d, false), false);
     }
 }
