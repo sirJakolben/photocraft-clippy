@@ -39,6 +39,103 @@ pub enum Control {
     InitialDirection,
     /// Angle only: the current stroke direction.
     Direction,
+    /// The pen's speed (Clip Studio Paint's Velocity): full value while the pen moves slowly, down
+    /// to nothing at [`crate::dynamics::VELOCITY_FULL_SPEED`] screen pixels per millisecond and
+    /// faster. Input without timestamps reads full value, as a mouse reads no tilt.
+    Velocity,
+}
+
+/// Most further controls one [`Dynamic`] combines with its own (Clip Studio Paint's pen settings
+/// offer pressure, tilt and velocity at once, besides random).
+pub const MAX_EXTRA_CONTROLS: usize = 3;
+
+/// A further control of a [`Dynamic`]: its value, through `curve`, scaled into
+/// `minimum..maximum` and multiplied with the dynamic's own control.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct Influence {
+    pub control: Control,
+    /// 0..1 value at the control's weakest input.
+    pub minimum: f32,
+    /// 0..1 value at its strongest input (Clip Studio Paint's tilt has one; 1 for the others).
+    pub maximum: f32,
+    /// Response to the control (Fade uses the dynamic's `fade_steps`).
+    pub curve: ResponseCurve,
+}
+
+impl Influence {
+    const NONE: Self = Self { control: Control::Off, minimum: 0.0, maximum: 1.0, curve: ResponseCurve::LINEAR };
+
+    pub const fn new(control: Control, minimum: f32) -> Self {
+        Self { control, minimum, ..Self::NONE }
+    }
+}
+
+impl Default for Influence {
+    fn default() -> Self {
+        Self::NONE
+    }
+}
+
+/// A [`Dynamic`]'s further controls: up to [`MAX_EXTRA_CONTROLS`], never `Off` ones. Fixed-size, so
+/// a [`Dynamic`] stays `Copy` and a dab evaluates it without allocating. In JSON it is a list of
+/// [`Influence`] objects; extra entries and `off` controls are dropped when it is read.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Controls {
+    n: u8,
+    items: [Influence; MAX_EXTRA_CONTROLS],
+}
+
+impl Controls {
+    pub const EMPTY: Self = Self { n: 0, items: [Influence::NONE; MAX_EXTRA_CONTROLS] };
+
+    /// The first [`MAX_EXTRA_CONTROLS`] influences of `list` that have a control.
+    pub fn new(list: &[Influence]) -> Self {
+        let mut c = Self::EMPTY;
+        for i in list.iter().filter(|i| i.control != Control::Off) {
+            if !c.push(*i) {
+                break;
+            }
+        }
+        c
+    }
+
+    /// Add an influence; false (and nothing added) when full or `Off`.
+    pub fn push(&mut self, i: Influence) -> bool {
+        let Some(slot) = self.items.get_mut(usize::from(self.n)) else { return false };
+        if i.control == Control::Off {
+            return false;
+        }
+        *slot = i;
+        self.n += 1;
+        true
+    }
+
+    pub fn as_slice(&self) -> &[Influence] {
+        self.items.get(..usize::from(self.n)).unwrap_or(&[])
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.n == 0
+    }
+}
+
+impl Default for Controls {
+    fn default() -> Self {
+        Self::EMPTY
+    }
+}
+
+impl Serialize for Controls {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        self.as_slice().serialize(s)
+    }
+}
+
+impl<'de> Deserialize<'de> for Controls {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        Ok(Self::new(&Vec::<Influence>::deserialize(d)?))
+    }
 }
 
 /// One dynamic parameter: random jitter plus a controller with a floor.
@@ -53,26 +150,32 @@ pub struct Dynamic {
     /// 0..1 floor the control/jitter may reduce the value to (minimum diameter, roundness, depth…).
     pub minimum: f32,
     /// This dynamic's own response to its control (Fade, Pen Pressure, Pen Tilt, Stylus Wheel,
-    /// Rotation), applied after the global pen curve. Linear by default. Always written to JSON, so
-    /// a `tools.setBrush` patch can set it back to linear. Angle Jitter's controls ignore it.
+    /// Rotation, Velocity), applied after the global pen curve. Linear by default. Always written
+    /// to JSON, so a `tools.setBrush` patch can set it back to linear. Angle Jitter's controls ignore
+    /// it.
     pub curve: ResponseCurve,
+    /// Further controls multiplied with `control` (Clip Studio Paint: several pen settings at once,
+    /// such as pressure and velocity). Empty by default and then not written to JSON. The angle
+    /// dynamic ignores them.
+    #[serde(skip_serializing_if = "Controls::is_empty")]
+    pub controls: Controls,
 }
 
 impl Default for Dynamic {
     fn default() -> Self {
-        Self { jitter: 0.0, control: Control::Off, fade_steps: 25, minimum: 0.0, curve: ResponseCurve::LINEAR }
+        Self::jitter(0.0)
     }
 }
 
 impl Dynamic {
     pub const fn controlled(control: Control) -> Self {
-        Self { jitter: 0.0, control, fade_steps: 25, minimum: 0.0, curve: ResponseCurve::LINEAR }
+        Self { jitter: 0.0, control, fade_steps: 25, minimum: 0.0, curve: ResponseCurve::LINEAR, controls: Controls::EMPTY }
     }
     pub const fn jitter(jitter: f32) -> Self {
-        Self { jitter, control: Control::Off, fade_steps: 25, minimum: 0.0, curve: ResponseCurve::LINEAR }
+        Self { jitter, control: Control::Off, fade_steps: 25, minimum: 0.0, curve: ResponseCurve::LINEAR, controls: Controls::EMPTY }
     }
     pub fn is_active(&self) -> bool {
-        self.jitter > 0.0 || self.control != Control::Off
+        self.jitter > 0.0 || self.control != Control::Off || !self.controls.is_empty()
     }
 }
 
@@ -458,11 +561,90 @@ pub struct Smoothing {
     pub catch_up_on_end: bool,
     /// Divide the string length by the view zoom (the command's `zoom` param).
     pub adjust_for_zoom: bool,
+    /// Clip Studio Paint's Stabilization › Adjust by speed: the amount follows the pointer's
+    /// speed. `None` (the default, not written to JSON) keeps it fixed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub by_speed: Option<SpeedSmoothing>,
+    /// Clip Studio Paint's Stickiness steps (0..=5; more read as 5): the brush keeps
+    /// `stickiness × STICKINESS_PX` screen pixels ([`crate::dynamics::STICKINESS_PX`]) behind the
+    /// pointer, so small wobbles don't move it, and catches up at the stroke's end. 0 (the
+    /// default, not written to JSON) = none.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub stickiness: u8,
+}
+
+fn is_zero(v: &u8) -> bool {
+    *v == 0
+}
+
+/// How Smoothing follows the pointer's speed ([`Smoothing::by_speed`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SpeedSmoothing {
+    /// Smooth more while the pointer moves slowly.
+    StrengthenSlow,
+    /// Smooth less while it moves fast.
+    ReduceFast,
 }
 
 impl Default for Smoothing {
     fn default() -> Self {
-        Self { enabled: true, amount: 0.0, pulled_string: false, catch_up: true, catch_up_on_end: true, adjust_for_zoom: true }
+        Self { enabled: true, amount: 0.0, pulled_string: false, catch_up: true, catch_up_on_end: true, adjust_for_zoom: true, by_speed: None, stickiness: 0 }
+    }
+}
+
+/// Clip Studio Paint's Start and End: the stroke grows from nothing over its first `start` pixels
+/// of path and shrinks to nothing over its last `end` pixels. Where the stroke ends is known only
+/// when the pen lifts, so its last `end` pixels of dabs wait for that (a live preview shows them
+/// tapered as if the pen lifted now). Off by default (both lengths 0).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct Taper {
+    /// Path length in pixels over which the start tapers; 0 = no start taper.
+    pub start: f32,
+    /// Path length in pixels over which the end tapers; 0 = no end taper.
+    pub end: f32,
+    /// Scale both lengths by the pen speed where they apply: full length from
+    /// [`crate::dynamics::VELOCITY_FULL_SPEED`] on, shorter when slower. Input without timestamps
+    /// tapers at full length.
+    pub by_speed: bool,
+    /// What tapers (Clip Studio Paint's target list): the size, the opacity ceiling, the flow.
+    pub size: bool,
+    pub opacity: bool,
+    pub flow: bool,
+}
+
+impl Taper {
+    /// Longest taper accepted, in pixels; longer ones are cut to it.
+    pub const MAX_LENGTH: f32 = 10_000.0;
+
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+
+    /// Does the taper change the stroke at all?
+    pub fn is_active(&self) -> bool {
+        (self.start_len() > 0.0 || self.end_len() > 0.0) && (self.size || self.opacity || self.flow)
+    }
+
+    /// The start length, sanitised (finite, 0..[`Self::MAX_LENGTH`]).
+    pub fn start_len(&self) -> f32 {
+        Self::length(self.start)
+    }
+
+    /// The end length, sanitised (finite, 0..[`Self::MAX_LENGTH`]).
+    pub fn end_len(&self) -> f32 {
+        Self::length(self.end)
+    }
+
+    fn length(v: f32) -> f32 {
+        if v.is_nan() { 0.0 } else { v.clamp(0.0, Self::MAX_LENGTH) }
+    }
+}
+
+impl Default for Taper {
+    fn default() -> Self {
+        Self { start: 0.0, end: 0.0, by_speed: false, size: true, opacity: false, flow: false }
     }
 }
 
@@ -516,6 +698,13 @@ pub struct BrushSettings {
     /// ([`crate::grid_square`]), whatever its angle or roundness. The Eraser's Block mode.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub square: bool,
+    /// Clip Studio Paint's Anti-aliasing steps: 0 none (an aliased tip, as `aliased`), 1 weak,
+    /// 2 medium (PhotoCraft's own edge), 3 strong; larger values read as 3. `None` (the default,
+    /// not written to JSON) leaves the edge to `aliased`, as before. A step sets how wide a
+    /// computed tip's anti-aliased edge is at least ([`crate::aa_edge_px`]); a sampled tip keeps
+    /// its bitmap's own edge unless the step is 0.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub aa_level: Option<u8>,
     // --- dynamics sections ---
     pub shape_dynamics: ShapeDynamics,
     pub scattering: Scattering,
@@ -533,6 +722,9 @@ pub struct BrushSettings {
     /// Build-up rate in dabs per second.
     pub build_up_rate: f32,
     pub smoothing: Smoothing,
+    /// Start and End taper (Clip Studio Paint); off by default and then not written to JSON.
+    #[serde(skip_serializing_if = "Taper::is_default")]
+    pub taper: Taper,
     /// Keep the current texture (pattern + scale) when switching to another textured preset.
     pub protect_texture: bool,
     /// Sections whose settings stay when another preset is picked (tool state, like Photoshop's locks).
@@ -566,6 +758,7 @@ impl Default for BrushSettings {
             flip_y: false,
             aliased: false,
             square: false,
+            aa_level: None,
             shape_dynamics: ShapeDynamics::default(),
             scattering: Scattering::default(),
             texture: Texture::default(),
@@ -578,6 +771,7 @@ impl Default for BrushSettings {
             build_up: false,
             build_up_rate: 20.0,
             smoothing: Smoothing::default(),
+            taper: Taper::default(),
             protect_texture: false,
             locks: SectionLocks::default(),
             mixer: MixerSettings::default(),
@@ -587,6 +781,15 @@ impl Default for BrushSettings {
 }
 
 impl BrushSettings {
+    /// Does the tip paint without anti-aliasing (coverage 0 or 1)? [`Self::aa_level`] decides
+    /// when set, else [`Self::aliased`].
+    pub fn is_aliased(&self) -> bool {
+        match self.aa_level {
+            Some(level) => level == 0,
+            None => self.aliased,
+        }
+    }
+
     /// Resize the primary tip and keep an enabled Dual Brush tip at the same relative size.
     /// An explicit Dual Brush size edit should bypass this and retain the requested diameter.
     ///

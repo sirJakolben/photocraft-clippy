@@ -19,7 +19,7 @@ use crate::dynamics::DabGenerator;
 use crate::retouch::{Footprint, alpha_index, over_native};
 use crate::rng::hash2;
 use crate::tile::{Mips, PatternImage};
-use crate::{Dab, StrokePoint, dab_coverage, tip_falloff, tip_reach};
+use crate::{Dab, StrokePoint, aa_edge_px, dab_coverage_edge, tip_falloff_edge, tip_reach_edge};
 
 /// Salt of the 8-bit dither's per-pixel noise.
 const DITHER_SALT: u64 = 0x0000_6469_7468_6572;
@@ -149,6 +149,8 @@ pub struct BrushContext {
     tip: Option<Arc<Mips>>,
     dual_tip: Option<Arc<Mips>>,
     texture: Option<Arc<PatternImage>>,
+    /// The primary tip's narrowest anti-aliased edge ([`aa_edge_px`]).
+    edge: f32,
 }
 
 fn prepare_pattern(b: &BrushSettings) -> Option<Arc<PatternImage>> {
@@ -189,6 +191,7 @@ impl BrushContext {
             tip: mips(&brush.tip),
             dual_tip: if brush.dual_brush.enabled { mips(&brush.dual_brush.tip) } else { None },
             texture: prepare_pattern(&brush),
+            edge: aa_edge_px(brush.aa_level),
             brush,
         }
     }
@@ -215,15 +218,22 @@ impl BrushContext {
         let sampled = if dual { self.dual_tip.is_some() } else { self.tip.is_some() };
         let hardness = if dual { self.brush.dual_brush.hardness } else { self.brush.hardness };
         // A computed soft tip paints past its nominal radius (see `tip_shape`).
-        let aliased = self.brush.aliased && !dual;
+        let aliased = self.brush.is_aliased() && !dual;
         let reach = if sampled {
             d.radius * std::f32::consts::SQRT_2
         } else if aliased {
             d.radius
         } else {
-            crate::tip_reach(d.radius, hardness).max(d.radius)
+            tip_reach_edge(d.radius, hardness, self.edge_for(dual)).max(d.radius)
         };
         rect_around(d, reach)
+    }
+
+    /// The narrowest anti-aliased edge of the primary or the Dual Brush tip (which keeps
+    /// PhotoCraft's own).
+    #[inline]
+    fn edge_for(&self, dual: bool) -> f32 {
+        if dual { aa_edge_px(None) } else { self.edge }
     }
 
     /// Rasterise a dab over `rect` into `out` (tip shape × noise × per-tip texture × wet edges × flow).
@@ -244,7 +254,8 @@ impl BrushContext {
         }
         let b = &self.brush;
         let (hardness, mips) = if dual { (b.dual_brush.hardness, self.dual_tip.as_deref()) } else { (b.hardness, self.tip.as_deref()) };
-        let aliased = b.aliased && !dual;
+        let aliased = b.is_aliased() && !dual;
+        let edge = self.edge_for(dual);
         let wet = b.wet_edges && !dual && depth.is_none();
         let noise = b.noise && !dual;
         let tex_tip = !dual && b.texture.enabled && b.texture.each_tip && self.texture.is_some();
@@ -260,7 +271,7 @@ impl BrushContext {
         let r = d.radius;
         let ro = d.roundness.max(0.5 / r).min(1.0);
         let rm = (r * ro).max(0.5);
-        let reach = if aliased || mips.is_some() { rm } else { crate::tip_reach(rm, hardness).max(rm) };
+        let reach = if aliased || mips.is_some() { rm } else { tip_reach_edge(rm, hardness, edge).max(rm) };
         let reach2 = (reach + 0.5) * (reach + 0.5);
         // Sampled-tip mapping.
         let (level, inv_scale, tw, th) = match mips {
@@ -301,7 +312,7 @@ impl BrushContext {
             && d.alpha.is_finite()
             && w > 0
         {
-            rasterize_round(d, rect, out, hardness, aliased);
+            rasterize_round(d, rect, out, hardness, aliased, edge);
             return;
         }
         for yy in 0..h {
@@ -331,7 +342,7 @@ impl BrushContext {
                                 let sd = ((su * ro).powi(2) + sv * sv).sqrt();
                                 // Each sample takes the tip's own edge, so the covered area
                                 // changes smoothly with the dab's position.
-                                sum += tip_falloff(sd, rm, hardness);
+                                sum += tip_falloff_edge(sd, rm, hardness, edge);
                             }
                         }
                         (sum / (SUBPIXEL.len() * SUBPIXEL.len()) as f32, d2.sqrt() / rm)
@@ -342,7 +353,7 @@ impl BrushContext {
                             continue;
                         }
                         let dd = d2.sqrt();
-                        let val = if aliased { if dd <= rm { 1.0 } else { 0.0 } } else { dab_coverage(dd, rm, hardness) };
+                        let val = if aliased { if dd <= rm { 1.0 } else { 0.0 } } else { dab_coverage_edge(dd, rm, hardness, edge) };
                         (val, dd / rm)
                     }
                     Some(m) => {
@@ -987,7 +998,7 @@ impl StrokeRenderer {
         // Eraser's Pencil and Block modes) paint every pixel by the same amount, so they have no
         // gradient to band and are not dithered: a Pencil line at partial opacity is one flat
         // colour, as in Photoshop, not grain that a tolerance-0 Magic Wand or Paint Bucket trips on.
-        let dither = fmt.sample == SampleType::U8 && !b.aliased;
+        let dither = fmt.sample == SampleType::U8 && !b.is_aliased();
         let mut dmg = Rect::EMPTY;
         let mut region = Vec::new();
         for (tx, ty) in keys {
@@ -1084,12 +1095,12 @@ pub fn render_stroke(
 
 // The zero-angle transform only changes signs; squaring gives the same radial distance.
 #[inline(never)]
-fn rasterize_round(d: &Dab, rect: Rect, out: &mut [f32], hardness: f32, aliased: bool) {
+fn rasterize_round(d: &Dab, rect: Rect, out: &mut [f32], hardness: f32, aliased: bool, edge: f32) {
     let (cx, cy) = if aliased { grid_center(d.center.x, d.center.y, 2.0 * d.radius) } else { (d.center.x as f32, d.center.y as f32) };
     let ro = d.roundness.max(0.5 / d.radius).min(1.0);
     let rm = (d.radius * ro).max(0.5);
     let w = rect.width() as usize;
-    let reach = if aliased { rm } else { tip_reach(rm, hardness).max(rm) };
+    let reach = if aliased { rm } else { tip_reach_edge(rm, hardness, edge).max(rm) };
     let reach2 = (reach + 0.5) * (reach + 0.5);
     for (yy, row) in out.chunks_exact_mut(w).enumerate() {
         let dy = (rect.y0 + yy as i32) as f32 + 0.5 - cy;
@@ -1103,7 +1114,7 @@ fn rasterize_round(d: &Dab, rect: Rect, out: &mut [f32], hardness: f32, aliased:
             for (xx, dst) in row.iter_mut().enumerate() {
                 let dx = (rect.x0 + xx as i32) as f32 + 0.5 - cx;
                 let d2 = (dx * ro).powi(2) + dy * dy;
-                let val = if d2 >= reach2 { 0.0 } else { tip_falloff(d2.sqrt(), rm, hardness) };
+                let val = if d2 >= reach2 { 0.0 } else { tip_falloff_edge(d2.sqrt(), rm, hardness, edge) };
                 *dst = if val <= 0.0 { 0.0 } else { val * d.alpha };
             }
         }

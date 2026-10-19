@@ -6,7 +6,9 @@
 
 use photocraft_geom::Point;
 
-use crate::brush::{BrushSettings, Control, Dynamic, Smoothing};
+use std::collections::VecDeque;
+
+use crate::brush::{BrushSettings, Control, Dynamic, Smoothing, SpeedSmoothing, Taper};
 use crate::rng::{rand_signed, rand01, stream};
 use crate::{Dab, StrokePoint};
 
@@ -14,6 +16,10 @@ use crate::{Dab, StrokePoint};
 pub const MAX_STRING_PX: f64 = 100.0;
 /// Stroke time over which exponential smoothing moves its fraction of the way to the pointer.
 pub const SMOOTHING_STEP_MS: f64 = 16.0;
+/// Screen pixels the brush stays behind the pointer per Stickiness step ([`Smoothing::stickiness`]).
+pub const STICKINESS_PX: f64 = 2.0;
+/// Most Stickiness steps.
+const MAX_STICKINESS: u8 = 5;
 
 /// With Spacing unchecked, one dab per this many milliseconds of stroke time, so faster strokes
 /// space their dabs further apart (Photoshop: "the speed of the cursor determines the spacing").
@@ -26,6 +32,16 @@ const MAX_GRID_STEPS: f64 = 1e7;
 const MIN_SPEED_STEP: f64 = 0.5;
 /// Maximum airbrush catch-up dabs for one input segment.
 const MAX_AIRBRUSH_DABS_PER_SEGMENT: usize = 512;
+
+/// Pen speed, in screen pixels per millisecond, at which [`Control::Velocity`] reads 0 (a brisk
+/// flick of the wrist on a tablet); slower movement reads proportionally more.
+pub const VELOCITY_FULL_SPEED: f32 = 3.0;
+/// Most steps the end taper holds back ([`Taper::end`]); older ones are painted untapered, so an
+/// airbrush held still for minutes doesn't pile up dabs.
+const MAX_HELD_STEPS: usize = 8192;
+/// Time constant (ms) of the exponential average the measured pen speed passes through: input
+/// devices report positions unevenly, and the raw speed of one segment flickers.
+pub const VELOCITY_SMOOTHING_MS: f64 = 20.0;
 
 /// The dab centre of the pixel-grid cell holding `v` (see [`PathWalker::pixel_grid`]): the
 /// pixel's centre for `offset` 0.5, the nearest pixel corner for 0. A value within rounding
@@ -92,7 +108,32 @@ impl Smoother {
     }
 
     fn active(&self) -> bool {
-        self.cfg.enabled && self.cfg.amount > 0.0
+        self.cfg.enabled && (self.cfg.amount > 0.0 || self.cfg.stickiness > 0)
+    }
+
+    /// How far (document pixels) Stickiness keeps the brush behind the pointer.
+    fn stick_len(&self) -> f64 {
+        let mut len = f64::from(self.cfg.stickiness.min(MAX_STICKINESS)) * STICKINESS_PX;
+        if self.cfg.adjust_for_zoom {
+            len /= self.zoom;
+        }
+        len
+    }
+
+    /// The smoothing amount for a pointer moving `d` document pixels in `dt` ms
+    /// ([`Smoothing::by_speed`]): `amount` itself without timestamps or without the option.
+    fn amount_at(&self, amount: f64, d: f64, dt: f64) -> f64 {
+        let Some(mode) = self.cfg.by_speed else { return amount };
+        if !(dt > 0.0 && dt.is_finite() && d.is_finite()) {
+            return amount;
+        }
+        let k = (d * self.zoom / dt / f64::from(VELOCITY_FULL_SPEED)).clamp(0.0, 1.0);
+        match mode {
+            // At rest half of what is left to full smoothing is added; at full speed nothing.
+            SpeedSmoothing::StrengthenSlow => amount + (1.0 - amount) * (1.0 - k) * 0.5,
+            // At full speed the amount halves; at rest it stays.
+            SpeedSmoothing::ReduceFast => amount * (1.0 - 0.5 * k),
+        }
     }
 
     /// Feed one input point; returns the brush positions to paint through.
@@ -107,12 +148,15 @@ impl Smoother {
             out.push(p);
             return;
         };
-        let amount = f64::from(self.cfg.amount.clamp(0.0, 1.0));
+        // NaN reads as no smoothing, as the clamp left it before.
+        let amount = f64::from(if self.cfg.amount.is_nan() { 0.0 } else { self.cfg.amount.clamp(0.0, 1.0) });
+        let stick = self.stick_len();
         if self.cfg.pulled_string {
             let mut len = amount * MAX_STRING_PX;
             if self.cfg.adjust_for_zoom {
                 len /= self.zoom;
             }
+            len += stick;
             let (dx, dy) = (p.x - pos.x, p.y - pos.y);
             let d = (dx * dx + dy * dy).sqrt();
             if d > len {
@@ -126,9 +170,24 @@ impl Smoother {
         // Exponential: every SMOOTHING_STEP_MS of stroke time moves `a` of the way towards the
         // pointer, so the feel doesn't depend on how often the device reports. Input without
         // timestamps takes one step per point.
-        let a = 1.0 - amount.min(0.95);
         let dt = prev_input.map_or(0.0, |q| p.time - q.time);
+        let amount = match (self.cfg.by_speed, prev_input) {
+            (Some(_), Some(q)) => self.amount_at(amount, (p.x - q.x).hypot(p.y - q.y), dt).clamp(0.0, 1.0),
+            _ => amount,
+        };
+        let a = 1.0 - amount.min(0.95);
         let still = prev_input.is_some_and(|q| q.x == p.x && q.y == p.y);
+        // Stickiness: the brush heads for the point `stick` short of the pointer.
+        let p = if stick > 0.0 {
+            let d = (p.x - pos.x).hypot(p.y - pos.y);
+            // NaN distances move nothing.
+            if d.is_nan() || d <= stick {
+                return;
+            }
+            StrokePoint { time: p.time, ..pull(&pos, &p, (d - stick) / d) }
+        } else {
+            p
+        };
         if still && !self.cfg.catch_up {
             // Without Stroke Catch-Up the brush stops while the pointer pauses (Photoshop).
             return;
@@ -153,6 +212,8 @@ impl Smoother {
     /// stroke needs time to keep passing (repeats of the last point) while the pointer is held.
     pub fn lagging(&self) -> bool {
         match (self.active() && self.cfg.catch_up && !self.cfg.pulled_string, self.pos, self.last_input) {
+            // Stickiness leaves the brush its length short of the pointer for good.
+            (true, Some(pos), Some(last)) if self.cfg.stickiness > 0 => (pos.x - last.x).hypot(pos.y - last.y) > self.stick_len() + 0.01,
             (true, Some(pos), Some(last)) => (pos.x - last.x).abs() + (pos.y - last.y).abs() > 0.01,
             _ => false,
         }
@@ -192,6 +253,66 @@ pub fn smooth_points(cfg: &Smoothing, zoom: f32, pts: &[StrokePoint]) -> Vec<Str
 }
 
 // ---------------------------------------------------------------------------
+// Pen speed
+// ---------------------------------------------------------------------------
+
+/// Measures the pen's speed from the timestamped input points, for [`Control::Velocity`]: screen
+/// pixels per millisecond (document distance times the view zoom, since the hand moves on the
+/// screen), averaged over [`VELOCITY_SMOOTHING_MS`]. Points without a later timestamp than the
+/// last measured one add their distance to the next segment that has one; a timestamp going back
+/// restarts the measurement from that point.
+#[derive(Clone, Copy, Debug)]
+pub struct SpeedMeter {
+    zoom: f64,
+    /// Position and time of the last point that advanced the clock.
+    last: Option<(f64, f64, f64)>,
+    /// Distance covered since `last` by points that did not advance it.
+    pending: f64,
+    speed: Option<f64>,
+}
+
+impl SpeedMeter {
+    pub fn new(zoom: f32) -> Self {
+        let zoom = f64::from(zoom);
+        Self { zoom: if zoom.is_finite() && zoom > 0.0 { zoom } else { 1.0 }, last: None, pending: 0.0, speed: None }
+    }
+
+    /// Feed one input point; returns the current speed (`None` until the pen has moved with time).
+    pub fn push(&mut self, p: &StrokePoint) -> Option<f32> {
+        let Some((x, y, t)) = self.last else {
+            if p.time.is_finite() {
+                self.last = Some((p.x, p.y, p.time));
+            }
+            return self.speed();
+        };
+        let dt = p.time - t;
+        let d = (p.x - x).hypot(p.y - y);
+        if !(dt.is_finite() && d.is_finite()) || dt < 0.0 {
+            self.last = p.time.is_finite().then_some((p.x, p.y, p.time));
+            self.pending = 0.0;
+        } else if dt == 0.0 {
+            self.pending += d;
+            self.last = Some((p.x, p.y, t));
+        } else {
+            // Capped, so an absurd jump can't make the average infinite (and then NaN for good).
+            let inst = ((self.pending + d) * self.zoom / dt).min(1e9);
+            let k = 1.0 - (-dt / VELOCITY_SMOOTHING_MS).exp();
+            self.speed = Some(match self.speed {
+                Some(v) => v + (inst - v) * k,
+                None => inst,
+            });
+            self.last = Some((p.x, p.y, p.time));
+            self.pending = 0.0;
+        }
+        self.speed()
+    }
+
+    pub fn speed(&self) -> Option<f32> {
+        self.speed.filter(|v| v.is_finite()).map(|v| v.clamp(0.0, 1e9) as f32)
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Path walking
 // ---------------------------------------------------------------------------
 
@@ -204,9 +325,18 @@ pub struct StepInput {
     pub initial_direction: f32,
     /// Sequential step number (0 = first).
     pub step: u64,
+    /// Smoothed pen speed in screen pixels per millisecond; `None` until input with timestamps
+    /// has moved (see [`SpeedMeter`]).
+    pub speed: Option<f32>,
+    /// Path distance from the stroke's first point, in pixels.
+    pub distance: f64,
+    /// The end taper's factor at this step ([`crate::brush::Taper::end`]): 1 except in the last
+    /// stretch of a finished stroke.
+    pub end_taper: f32,
 }
 
-/// Walks a polyline and emits steps every `step_len(point)` pixels, plus airbrush steps in time.
+/// Walks a polyline and emits steps every `step_len(point, distance)` pixels, plus airbrush steps
+/// in time.
 #[derive(Clone, Debug)]
 pub struct PathWalker {
     last: Option<StrokePoint>,
@@ -226,6 +356,8 @@ pub struct PathWalker {
     /// Pixel-grid stepping for small aliased tips: the dab-centre offset inside a pixel (see
     /// [`PathWalker::pixel_grid`]).
     grid: Option<f64>,
+    /// Path distance from the first point to `last`.
+    travel: f64,
 }
 
 impl PathWalker {
@@ -242,6 +374,7 @@ impl PathWalker {
             speed: None,
             speed_acc: 0.0,
             grid: None,
+            travel: 0.0,
         }
     }
 
@@ -261,7 +394,8 @@ impl PathWalker {
 
     /// Emits the pixel steps from `a` to `p` (see [`PathWalker::pixel_grid`]). False, emitting
     /// nothing, when the span is not finite or implausibly long: distance spacing takes over.
-    fn grid_steps(&mut self, a: &StrokePoint, p: &StrokePoint, offset: f64, out: &mut impl FnMut(StepInput)) -> bool {
+    /// `travel` is the path distance at `a`.
+    fn grid_steps(&mut self, a: &StrokePoint, p: &StrokePoint, offset: f64, travel: f64, out: &mut impl FnMut(StepInput)) -> bool {
         // The pieces of a 45° line differ in rounding noise: keep them all on one major axis.
         let steep = (p.y - a.y).abs() > (p.x - a.x).abs() * (1.0 + 1e-9);
         let (am, an, pm, pn) = if steep { (a.y, a.x, p.y, p.x) } else { (a.x, a.y, p.x, p.y) };
@@ -271,6 +405,7 @@ impl PathWalker {
         if !(n.is_finite() && dn.is_finite()) || n > MAX_GRID_STEPS || dm == 0.0 {
             return false;
         }
+        let len = dm.hypot(dn);
         let dir = (m1 - m0).signum();
         for i in 1..=n as u64 {
             let c = m0 + dir * i as f64;
@@ -280,7 +415,7 @@ impl PathWalker {
             let mut q = lerp_pt(a, p, t.clamp(0.0, 1.0));
             let cn = grid_cell(an + dn * t, offset);
             (q.x, q.y) = if steep { (cn, c) } else { (c, cn) };
-            self.emit(q, out);
+            self.emit(q, travel + t.clamp(0.0, 1.0) * len, out);
         }
         true
     }
@@ -292,17 +427,25 @@ impl PathWalker {
         self
     }
 
-    fn emit(&mut self, point: StrokePoint, out: &mut impl FnMut(StepInput)) {
-        let s = StepInput { point, direction: self.dir, initial_direction: self.initial_dir.unwrap_or(self.dir), step: self.step };
+    fn emit(&mut self, point: StrokePoint, distance: f64, out: &mut impl FnMut(StepInput)) {
+        let s = StepInput {
+            point,
+            direction: self.dir,
+            initial_direction: self.initial_dir.unwrap_or(self.dir),
+            step: self.step,
+            speed: None,
+            distance,
+            end_taper: 1.0,
+        };
         self.step += 1;
         out(s);
     }
 
-    pub fn push(&mut self, p: StrokePoint, step_len: &impl Fn(&StrokePoint) -> f64, out: &mut impl FnMut(StepInput)) {
+    pub fn push(&mut self, p: StrokePoint, step_len: &impl Fn(&StrokePoint, f64) -> f64, out: &mut impl FnMut(StepInput)) {
         let Some(a) = self.last else {
             self.last = Some(p);
             self.pending_first = Some(p);
-            self.next_at = step_len(&p);
+            self.next_at = step_len(&p, 0.0);
             return;
         };
         let (dx, dy) = (p.x - a.x, p.y - a.y);
@@ -314,19 +457,23 @@ impl PathWalker {
             }
         }
         if let Some(f) = self.pending_first.take() {
-            self.emit(f, out);
+            self.emit(f, 0.0, out);
         }
+        let travel = self.travel;
+        // Hostile coordinates must not poison the distance of every later step.
+        self.travel += if len.is_finite() { len } else { 0.0 };
         if len > 1e-9 {
             // Speed spacing needs the segment's duration; without timestamps (a straight ⇧-click
             // line, or input that carries no times) the segment is spaced by distance instead.
             let dt = p.time - a.time;
             match self.speed.filter(|_| dt > 0.0 && dt.is_finite()) {
                 None => {
-                    if !self.grid.is_some_and(|g| self.grid_steps(&a, &p, g, out)) {
+                    if !self.grid.is_some_and(|g| self.grid_steps(&a, &p, g, travel, out)) {
                         while self.next_at <= len + 1e-9 {
-                            let q = lerp_pt(&a, &p, (self.next_at / len).min(1.0));
-                            self.emit(q, out);
-                            self.next_at += step_len(&q).max(0.25);
+                            let f = (self.next_at / len).min(1.0);
+                            let q = lerp_pt(&a, &p, f);
+                            self.emit(q, travel + f * len, out);
+                            self.next_at += step_len(&q, travel + f * len).max(0.25);
                         }
                         self.next_at -= len;
                     }
@@ -338,7 +485,7 @@ impl PathWalker {
                     while self.speed_acc >= iv && n < max_n {
                         self.speed_acc -= iv;
                         let f = ((dt - self.speed_acc) / dt).clamp(0.0, 1.0);
-                        self.emit(lerp_pt(&a, &p, f), out);
+                        self.emit(lerp_pt(&a, &p, f), travel + f * len, out);
                         n += 1;
                     }
                     if n == max_n {
@@ -353,7 +500,7 @@ impl PathWalker {
                 if dt > iv * MAX_AIRBRUSH_DABS_PER_SEGMENT as f64 {
                     // A stalled or hostile timestamp must not replay an arbitrarily long backlog.
                     self.time_acc = 0.0;
-                    self.emit(p, out);
+                    self.emit(p, self.travel, out);
                     self.last = Some(p);
                     return;
                 }
@@ -362,7 +509,7 @@ impl PathWalker {
                 while self.time_acc >= iv && n < MAX_AIRBRUSH_DABS_PER_SEGMENT {
                     self.time_acc -= iv;
                     let f = ((dt - self.time_acc) / dt).clamp(0.0, 1.0);
-                    self.emit(lerp_pt(&a, &p, f), out);
+                    self.emit(lerp_pt(&a, &p, f), travel + f * len, out);
                     n += 1;
                 }
             }
@@ -372,7 +519,7 @@ impl PathWalker {
 
     pub fn finish(&mut self, out: &mut impl FnMut(StepInput)) {
         if let Some(f) = self.pending_first.take() {
-            self.emit(f, out);
+            self.emit(f, 0.0, out);
         }
     }
 }
@@ -392,6 +539,8 @@ pub fn control_value(c: Control, fade_steps: u32, s: &StepInput) -> f32 {
         Control::PenTilt => 1.0 - (p.tilt_x.hypot(p.tilt_y) / 90.0).clamp(0.0, 1.0),
         Control::StylusWheel => p.wheel.clamp(0.0, 1.0),
         Control::Rotation => (p.rotation.rem_euclid(360.0)) / 360.0,
+        // Unknown speed (no timestamps) is full value; NaN never comes out of the clamp.
+        Control::Velocity => s.speed.map_or(1.0, |v| 1.0 - (v / VELOCITY_FULL_SPEED).clamp(0.0, 1.0)),
     }
 }
 
@@ -401,8 +550,29 @@ pub fn dynamic_value(d: &Dynamic, s: &StepInput) -> f32 {
     let v = control_value(d.control, d.fade_steps, s);
     match d.control {
         Control::Off | Control::InitialDirection | Control::Direction => v,
-        Control::Fade | Control::PenPressure | Control::PenTilt | Control::StylusWheel | Control::Rotation => d.curve.eval(v),
+        Control::Fade | Control::PenPressure | Control::PenTilt | Control::StylusWheel | Control::Rotation | Control::Velocity => d.curve.eval(v),
     }
+}
+
+/// The product of a dynamic's further controls ([`Dynamic::controls`]), each through its curve
+/// and scaled into its `minimum..maximum`: exactly 1 without any.
+pub fn extra_factor(d: &Dynamic, s: &StepInput) -> f32 {
+    let mut f = 1.0;
+    for i in d.controls.as_slice() {
+        let v = control_value(i.control, d.fade_steps, s);
+        let v = match i.control {
+            Control::Off | Control::InitialDirection | Control::Direction => v,
+            _ => i.curve.eval(v),
+        };
+        let (lo, hi) = (finite01(i.minimum, 0.0), finite01(i.maximum, 1.0));
+        f *= lo + (hi - lo) * v;
+    }
+    f
+}
+
+/// `v` clamped to 0..1, or `fallback` when it is NaN.
+fn finite01(v: f32, fallback: f32) -> f32 {
+    if v.is_nan() { fallback } else { v.clamp(0.0, 1.0) }
 }
 
 /// Angle contributed by a control, in degrees (counter-clockwise).
@@ -423,11 +593,12 @@ pub fn control_angle(c: Control, fade_steps: u32, s: &StepInput) -> f32 {
         Control::Rotation => p.rotation,
         Control::InitialDirection => s.initial_direction.to_degrees(),
         Control::Direction => s.direction.to_degrees(),
+        Control::Velocity => 360.0 * control_value(c, fade_steps, s),
     }
 }
 
 /// A 0..1 multiplier from a dynamic: control lerps from `minimum` to 1, jitter reduces randomly,
-/// never below `minimum`.
+/// never below `minimum`; further controls then multiply in with their own minimums.
 fn scalar(d: &Dynamic, s: &StepInput, r: f32) -> f32 {
     if !d.is_active() {
         return 1.0;
@@ -435,7 +606,8 @@ fn scalar(d: &Dynamic, s: &StepInput, r: f32) -> f32 {
     let min = d.minimum.clamp(0.0, 1.0);
     let cv = dynamic_value(d, s);
     let v = (min + (1.0 - min) * cv) * (1.0 - d.jitter.clamp(0.0, 1.0) * r);
-    v.max(min)
+    let v = v.max(min);
+    if d.controls.is_empty() { v } else { v * extra_factor(d, s) }
 }
 
 fn rgb_to_hsv(c: [f32; 3]) -> [f32; 3] {
@@ -474,7 +646,8 @@ pub fn dynamic_color(b: &BrushSettings, s: &StepInput, seed: u64, index: u64) ->
     let cd = &b.color_dynamics;
     let (fg, bg) = (b.color, b.background);
     let r = |st: u64| rand01(seed, index, st);
-    let base = if cd.fg_bg.control != Control::Off { 1.0 - dynamic_value(&cd.fg_bg, s) } else { 0.0 };
+    let base =
+        if cd.fg_bg.control != Control::Off || !cd.fg_bg.controls.is_empty() { 1.0 - dynamic_value(&cd.fg_bg, s) * extra_factor(&cd.fg_bg, s) } else { 0.0 };
     let t = (base + (1.0 - base) * cd.fg_bg.jitter.clamp(0.0, 1.0) * r(stream::FG_BG)).clamp(0.0, 1.0);
     let rgb = [fg[0] + (bg[0] - fg[0]) * t, fg[1] + (bg[1] - fg[1]) * t, fg[2] + (bg[2] - fg[2]) * t];
     let [mut h, mut sat, mut v] = rgb_to_hsv(rgb);
@@ -487,6 +660,24 @@ pub fn dynamic_color(b: &BrushSettings, s: &StepInput, seed: u64, index: u64) ->
     [o[0], o[1], o[2], fg[3] + (bg[3] - fg[3]) * t]
 }
 
+/// How much of a taper length applies at pen speed `speed` ([`Taper::by_speed`]).
+fn taper_speed_scale(t: &Taper, speed: Option<f32>) -> f32 {
+    match (t.by_speed, speed) {
+        (true, Some(v)) => (v / VELOCITY_FULL_SPEED).clamp(0.0, 1.0),
+        _ => 1.0,
+    }
+}
+
+/// The Start and End taper's factor at a step (0..1; 1 outside the tapered stretches).
+pub fn taper_factor(t: &Taper, s: &StepInput) -> f32 {
+    let mut f = if s.end_taper.is_nan() { 1.0 } else { s.end_taper.clamp(0.0, 1.0) };
+    let len = f64::from(t.start_len() * taper_speed_scale(t, s.speed));
+    if len > 0.0 && s.distance.is_finite() {
+        f *= (s.distance / len).clamp(0.0, 1.0) as f32;
+    }
+    f
+}
+
 /// Base (pre-jitter) diameter at a step: size × size control (pressure etc.). Drives spacing.
 pub fn base_diameter(b: &BrushSettings, s: &StepInput) -> f32 {
     let sd = &b.shape_dynamics;
@@ -496,6 +687,12 @@ pub fn base_diameter(b: &BrushSettings, s: &StepInput) -> f32 {
         f = min + (1.0 - min) * dynamic_value(&sd.size, s);
     } else if b.pressure_size {
         f = s.point.pressure.clamp(0.0, 1.0);
+    }
+    if sd.enabled && !sd.size.controls.is_empty() {
+        f *= extra_factor(&sd.size, s);
+    }
+    if b.taper.size && b.taper.is_active() {
+        f *= taper_factor(&b.taper, s);
     }
     b.size * f
 }
@@ -508,20 +705,25 @@ pub struct DabBuilder {
     /// Per-stroke colour (Color Dynamics with per-tip off), computed at the first step.
     stroke_color: Option<[f32; 4]>,
     next_index: u64,
+    /// The pen speed of the segment being walked (see [`StepInput::speed`]): the spacing follows
+    /// a size that velocity shrinks.
+    pub speed: Option<f32>,
 }
 
 impl DabBuilder {
     pub fn new(brush: &BrushSettings) -> Self {
-        Self { brush: brush.clone(), seed: brush.seed, stroke_color: None, next_index: 0 }
+        Self { brush: brush.clone(), seed: brush.seed, stroke_color: None, next_index: 0, speed: None }
     }
 
-    pub fn step_len(&self, p: &StrokePoint) -> f64 {
-        let s = StepInput { point: *p, direction: 0.0, initial_direction: 0.0, step: 0 };
+    /// The spacing after a step at `p`, `distance` along the path.
+    pub fn step_len(&self, p: &StrokePoint, distance: f64) -> f64 {
+        let s = StepInput { point: *p, direction: 0.0, initial_direction: 0.0, step: 0, speed: self.speed, distance, end_taper: 1.0 };
         let d = base_diameter(&self.brush, &s).max(1.0);
         f64::from(d * self.brush.spacing.max(0.01)).max(0.5)
     }
 
     pub fn build(&mut self, s: &StepInput, out: &mut Vec<Dab>) {
+        let s = &StepInput { speed: s.speed.or(self.speed), ..*s };
         let b = &self.brush;
         let seed = self.seed;
         let sd = &b.shape_dynamics;
@@ -534,6 +736,7 @@ impl DabBuilder {
             1
         };
         let base_d = base_diameter(b, s);
+        let taper = if b.taper.is_active() && (b.taper.opacity || b.taper.flow) { taper_factor(&b.taper, s) } else { 1.0 };
         for _ in 0..count {
             let i = self.next_index;
             self.next_index += 1;
@@ -579,7 +782,7 @@ impl DabBuilder {
             // Scatter.
             let mut c = Point::new(s.point.x, s.point.y);
             if sc.enabled && sc.scatter.jitter > 0.0 {
-                let cv = dynamic_value(&sc.scatter, s);
+                let cv = dynamic_value(&sc.scatter, s) * extra_factor(&sc.scatter, s);
                 let amt = f64::from(sc.scatter.jitter * cv * radius);
                 let (ox, oy) = (rand_signed(seed, i, stream::SCATTER_X) as f64 * amt, rand_signed(seed, i, stream::SCATTER_Y) as f64 * amt);
                 if sc.both_axes {
@@ -602,6 +805,12 @@ impl DabBuilder {
             let (wet, mix) = if tr.enabled { (scalar(&tr.wetness, s, r(stream::WET)), scalar(&tr.mix, s, r(stream::MIX))) } else { (1.0, 1.0) };
             if b.pressure_opacity && !(tr.enabled && tr.opacity.control != Control::Off) {
                 opacity *= s.point.pressure.clamp(0.0, 1.0);
+            }
+            if b.taper.opacity {
+                opacity *= taper;
+            }
+            if b.taper.flow {
+                flow *= taper;
             }
             // Colour.
             let color = if b.color_dynamics.enabled {
@@ -645,7 +854,7 @@ impl DualBuilder {
     pub fn new(brush: &BrushSettings) -> Self {
         Self { brush: brush.clone(), next_index: 0 }
     }
-    pub fn step_len(&self, _p: &StrokePoint) -> f64 {
+    pub fn step_len(&self, _p: &StrokePoint, _distance: f64) -> f64 {
         let d = &self.brush.dual_brush;
         f64::from(d.size.max(1.0) * d.spacing.max(0.01)).max(0.5)
     }
@@ -711,11 +920,16 @@ pub fn apply_pose(b: &BrushSettings, mut p: StrokePoint) -> StrokePoint {
 #[derive(Clone, Debug)]
 pub struct DabGenerator {
     smoother: Smoother,
+    speed: SpeedMeter,
     walker: PathWalker,
     dual_walker: Option<PathWalker>,
     builder: DabBuilder,
     dual: Option<DualBuilder>,
     scratch: Vec<StrokePoint>,
+    /// End taper length ([`Taper::end`]); 0 = steps are built as they come.
+    end_len: f64,
+    /// Primary steps within `end_len` of the path's end so far, waiting for the pen to lift.
+    held: VecDeque<StepInput>,
 }
 
 impl DabGenerator {
@@ -736,16 +950,50 @@ impl DabGenerator {
         let dual_on = brush.dual_brush.enabled;
         let mut walker = if brush.spacing_enabled { PathWalker::new(interval) } else { PathWalker::new(interval).speed_spacing(SPEED_SPACING_MS) };
         // A small aliased tip whose dabs are at most a pixel apart steps pixel by pixel (#2139).
-        if brush.aliased && brush.size * brush.spacing.max(0.01) <= 1.0 {
+        if brush.is_aliased() && brush.size * brush.spacing.max(0.01) <= 1.0 {
             walker = walker.pixel_grid(f64::from(crate::render::grid_center(0.0, 0.0, brush.size).0));
         }
         Self {
             smoother: Smoother::new(&brush.smoothing, zoom),
+            speed: SpeedMeter::new(zoom),
             walker,
             dual_walker: dual_on.then(|| PathWalker::new(None)),
             builder: DabBuilder::new(&brush),
             dual: dual_on.then(|| DualBuilder::new(&brush)),
             scratch: Vec::new(),
+            end_len: if brush.taper.is_active() { f64::from(brush.taper.end_len()) } else { 0.0 },
+            held: VecDeque::new(),
+        }
+    }
+
+    /// Build a primary step, or hold it back for the end taper.
+    fn primary(&mut self, s: StepInput, dabs: &mut Vec<Dab>) {
+        if self.end_len > 0.0 {
+            // Held steps keep the pen speed they were walked at.
+            self.held.push_back(StepInput { speed: s.speed.or(self.builder.speed), ..s });
+        } else {
+            self.builder.build(&s, dabs);
+        }
+    }
+
+    /// Build the held steps that are no longer within the end taper's reach (all of them, tapered,
+    /// once the stroke is `finished`).
+    fn release(&mut self, finished: bool, dabs: &mut Vec<Dab>) {
+        let end = self.walker.travel;
+        let taper = &self.builder.brush.taper;
+        let len = self.end_len * f64::from(taper_speed_scale(taper, self.builder.speed));
+        while let Some(&s) = self.held.front() {
+            // NaN distances fail the comparison and go out untapered.
+            let waiting = s.distance >= end - self.end_len && self.held.len() <= MAX_HELD_STEPS;
+            if !finished && waiting {
+                break;
+            }
+            self.held.pop_front();
+            let mut s = s;
+            if finished && len > 0.0 && end.is_finite() && s.distance.is_finite() {
+                s.end_taper = ((end - s.distance) / len).clamp(0.0, 1.0) as f32;
+            }
+            self.builder.build(&s, dabs);
         }
     }
 
@@ -753,15 +1001,18 @@ impl DabGenerator {
         for p in pts {
             let p = apply_pose(&self.builder.brush, *p);
             let b = &self.builder;
-            let len = |q: &StrokePoint| b.step_len(q);
+            let len = |q: &StrokePoint, distance: f64| b.step_len(q, distance);
             let mut steps = Vec::new();
             self.walker.push(p, &len, &mut |s| steps.push(s));
-            for s in &steps {
-                self.builder.build(s, dabs);
+            for s in steps {
+                self.primary(s, dabs);
+            }
+            if !self.held.is_empty() {
+                self.release(false, dabs);
             }
             if let (Some(w), Some(db)) = (self.dual_walker.as_mut(), self.dual.as_mut()) {
                 let mut steps = Vec::new();
-                let len = |q: &StrokePoint| db.step_len(q);
+                let len = |q: &StrokePoint, distance: f64| db.step_len(q, distance);
                 w.push(p, &len, &mut |s| steps.push(s));
                 for s in &steps {
                     db.build(s, dual);
@@ -773,11 +1024,13 @@ impl DabGenerator {
     /// Feed input points; appends the new primary and dual dabs.
     pub fn push(&mut self, pts: &[StrokePoint], dabs: &mut Vec<Dab>, dual: &mut Vec<Dab>) {
         let mut sm = std::mem::take(&mut self.scratch);
-        sm.clear();
+        // One input point at a time, so the brush positions it yields walk with its pen speed.
         for p in pts {
+            sm.clear();
+            self.builder.speed = self.speed.push(p);
             self.smoother.push(*p, &mut sm);
+            self.walk(&sm, dabs, dual);
         }
-        self.walk(&sm, dabs, dual);
         self.scratch = sm;
     }
 
@@ -788,9 +1041,10 @@ impl DabGenerator {
         self.walk(&sm, dabs, dual);
         let mut steps = Vec::new();
         self.walker.finish(&mut |s| steps.push(s));
-        for s in &steps {
-            self.builder.build(s, dabs);
+        for s in steps {
+            self.primary(s, dabs);
         }
+        self.release(true, dabs);
         if let (Some(w), Some(db)) = (self.dual_walker.as_mut(), self.dual.as_mut()) {
             let mut steps = Vec::new();
             w.finish(&mut |s| steps.push(s));
