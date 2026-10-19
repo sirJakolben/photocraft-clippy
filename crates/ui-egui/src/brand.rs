@@ -11,7 +11,8 @@ const ICON_PNG: &[u8] = include_bytes!("../../../assets/app-icon/hicolor/128x128
 
 /// The icon's pixels (one transparent pixel if it couldn't be decoded, which a test rules out).
 fn decode() -> egui::ColorImage {
-    let rgba = photocraft_codecs::decode(ICON_PNG).ok().map(|img| img.convert(ChannelLayout::Rgba, SampleType::U8));
+    let png = crate::identity::get().icon_png.unwrap_or(ICON_PNG);
+    let rgba = photocraft_codecs::decode(png).ok().map(|img| img.convert(ChannelLayout::Rgba, SampleType::U8));
     match rgba {
         Some(img) if img.data().len() == img.width() as usize * img.height() as usize * 4 => {
             egui::ColorImage::from_rgba_unmultiplied([img.width() as usize, img.height() as usize], img.data())

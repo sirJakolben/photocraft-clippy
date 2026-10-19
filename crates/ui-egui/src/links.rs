@@ -17,7 +17,11 @@ pub const COMMANDS: &[(&str, &str)] =
     &[("help.discord", DISCORD), ("help.website", APP_PAGE), ("help.artcraftWebsite", ARTCRAFT_WEBSITE), ("help.github", GITHUB), ("help.reportIssue", ISSUES)];
 
 pub fn url_for(id: &str) -> Option<&'static str> {
-    COMMANDS.iter().find(|c| c.0 == id).map(|c| c.1)
+    let identity = crate::identity::get();
+    if !identity.shows_help(id) {
+        return None;
+    }
+    COMMANDS.iter().find(|c| c.0 == id).map(|c| identity.url(id).unwrap_or(c.1))
 }
 
 /// Open `url` in the system browser (a new tab on the web) and note it in the status bar. Prefers
@@ -45,7 +49,12 @@ pub fn discord_button(app: &mut PhotocraftApp, ui: &mut egui::Ui, min_width: f32
 /// platform browser service) rather than `ui.hyperlink_to`, which uses the unreliable `ctx.open_url`.
 pub fn link_row(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     let t = crate::theme::Tokens::get(ui.ctx());
-    let links = [(tl!("PhotoCraft website"), APP_PAGE), (tl!("GitHub"), GITHUB), (tl!("ArtCraft"), ARTCRAFT_WEBSITE)];
+    let own = crate::identity::get().about_links;
+    let links: Vec<(&str, &str)> = if own.is_empty() {
+        vec![(tl!("PhotoCraft website"), APP_PAGE), (tl!("GitHub"), GITHUB), (tl!("ArtCraft"), ARTCRAFT_WEBSITE)]
+    } else {
+        own.iter().map(|(l, u)| (tl!(*l), *u)).collect()
+    };
     let font = egui::FontId::proportional(12.5);
     let sep = "  ·  ";
     let width: f32 = links.iter().map(|(l, _)| ui.painter().layout_no_wrap((*l).into(), font.clone(), t.text).size().x).sum::<f32>()

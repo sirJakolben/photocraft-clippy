@@ -109,6 +109,7 @@ pub mod hold_keys;
 pub mod i18n;
 mod icon_data;
 pub mod icons;
+pub mod identity;
 pub mod jobs_ui;
 pub mod kys_import;
 pub mod lasso_ui;

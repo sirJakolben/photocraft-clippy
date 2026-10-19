@@ -11,6 +11,10 @@ build = "build.rs"
 # Open HEIC/HEIF photos (the optional photocraft-heif crate). Not default so distributors choose
 # it; official builds (CI, packaging/, release) build with `--features heif`.
 heif = ["photocraft-codecs/heif"]
+# Clippy (PhotoCraft Extension): the same app with its own identity (app id, settings directory,
+# icon, name), so it runs beside PhotoCraft. Build: `cargo build -p photocraft --features clippy
+# --bin photocraft-clippy`. See `CLIPPY.md`.
+clippy = []
 
 [lints]
 workspace = true
@@ -95,6 +99,16 @@ winsafe = { version = "=0.0.29", default-features = false, features = ["user"] }
 [target.'cfg(target_os = "macos")'.dev-dependencies]
 objc2-foundation = { version = "=0.3.2", default-features = false, features = ["std", "NSString"] }
 objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std", "NSApplication", "NSEvent", "NSGraphicsContext", "NSMenu", "NSMenuItem", "NSResponder"] }
+
+# Declared because the Clippy binary below shares src/main.rs, which stops Cargo inferring it.
+[[bin]]
+name = "photocraft"
+path = "src/main.rs"
+
+[[bin]]
+name = "photocraft-clippy"
+path = "src/main.rs"
+required-features = ["clippy"]
 
 [[test]]
 name = "mac_menu_appkit"

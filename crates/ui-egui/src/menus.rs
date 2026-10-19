@@ -1068,6 +1068,16 @@ pub fn menu_items(app: &PhotocraftApp) -> Vec<MenuItem> {
     if !prefs.menus.hidden.is_empty() {
         items.retain(|i| !prefs.menus.is_hidden(&i.id));
     }
+    // A derived build (Clippy) leaves out PhotoCraft's community links and names its own.
+    let identity = crate::identity::get();
+    if !identity.is_photocraft() {
+        items.retain(|i| identity.shows_help(&i.id));
+        for it in &mut items {
+            if let Some(label) = identity.label(&it.id) {
+                it.label = label.into();
+            }
+        }
+    }
     if prefs.interface.show_menu_colors {
         for it in &mut items {
             it.color = prefs.menus.colors.get(&it.id).cloned();

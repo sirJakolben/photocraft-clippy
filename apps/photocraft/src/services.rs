@@ -473,14 +473,14 @@ fn image_from_offers(offers: &[String], mut fetch: impl FnMut(&str) -> Option<Ve
 
 /// The shell command that starts this install under XWayland, where winit delivers file drops
 /// (winit 0.30 has none on Wayland, #386). A Flatpak gets the X11 socket only without the Wayland
-/// one, an AppImage relaunches by its own path, and anything else is `photocraft` on the PATH.
+/// one, an AppImage relaunches by its own path, and anything else is [`crate::identity::BIN`] on the PATH.
 /// `None` outside Flatpak when there is no X server (`DISPLAY` unset) to run on.
 #[cfg(any(target_os = "linux", test))]
 pub fn xwayland_command(flatpak_id: Option<&str>, appimage: Option<&str>, x_display: bool) -> Option<String> {
     if let Some(id) = flatpak_id.filter(|id| !id.is_empty()) {
         return Some(format!("flatpak run --nosocket=wayland --socket=x11 {}", shell_word(id)));
     }
-    let exe = appimage.filter(|path| !path.is_empty()).map_or_else(|| "photocraft".to_string(), shell_word);
+    let exe = appimage.filter(|path| !path.is_empty()).map_or_else(|| crate::identity::BIN.to_string(), shell_word);
     x_display.then(|| format!("WAYLAND_DISPLAY= {exe}"))
 }
 
@@ -796,8 +796,8 @@ mod tests {
         let bare = xwayland_command(None, Some("/opt/photocraft-0.3.0-linux-x86_64.AppImage"), true);
         assert_eq!(bare.as_deref(), Some("WAYLAND_DISPLAY= /opt/photocraft-0.3.0-linux-x86_64.AppImage"));
         // deb, rpm, AUR, tarball: the binary on the PATH.
-        assert_eq!(xwayland_command(None, None, true).as_deref(), Some("WAYLAND_DISPLAY= photocraft"));
-        assert_eq!(xwayland_command(Some(""), Some(""), true).as_deref(), Some("WAYLAND_DISPLAY= photocraft"));
+        assert_eq!(xwayland_command(None, None, true), Some(format!("WAYLAND_DISPLAY= {}", crate::identity::BIN)));
+        assert_eq!(xwayland_command(Some(""), Some(""), true), Some(format!("WAYLAND_DISPLAY= {}", crate::identity::BIN)));
         // No X server (XWayland disabled): nothing to suggest.
         assert_eq!(xwayland_command(None, Some("/opt/p.AppImage"), false), None);
     }

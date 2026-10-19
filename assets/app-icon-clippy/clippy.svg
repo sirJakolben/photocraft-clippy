@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- Clippy (PhotoCraft Extension) app icon: a brush stroke curling into a "C" with a pen nib.
+       Original work for this project; MIT OR Apache-2.0 (see LICENSE.txt). -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1f8a8a"/>
+      <stop offset="1" stop-color="#3b3f9e"/>
+    </linearGradient>
+  </defs>
+  <rect x="16" y="16" width="224" height="224" rx="52" fill="url(#bg)"/>
+  <path d="M172 82 C150 60 104 58 82 86 C60 114 66 160 98 178 C122 192 152 188 170 170"
+        fill="none" stroke="#ffffff" stroke-width="26" stroke-linecap="round"/>
+  <path d="M170 170 L196 196 L182 150 Z" fill="#ffd166"/>
+  <circle cx="172" cy="82" r="9" fill="#ffd166"/>
+</svg>

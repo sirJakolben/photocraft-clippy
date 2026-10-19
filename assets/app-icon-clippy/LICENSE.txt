@@ -1,0 +1,6 @@
+Clippy (PhotoCraft Extension) app icon (clippy.svg and every file derived from it in this
+directory: hicolor/).
+
+Original artwork made for this project by its owner (@sirJakolben): drawn as SVG by hand, no
+third-party material. Licensed like the rest of PhotoCraft, at your option under the MIT License
+(../../LICENSE-MIT) or the Apache License, Version 2.0 (../../LICENSE-APACHE).

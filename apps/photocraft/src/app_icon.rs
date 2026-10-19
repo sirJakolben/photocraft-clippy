@@ -45,10 +45,13 @@ fn in_app_bundle(exe: &std::path::Path) -> bool {
         && name(bundle).is_some_and(|n| n.len() > 4 && n.to_ascii_lowercase().ends_with(".app"))
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", not(feature = "clippy")))]
 const PNG: &[u8] = include_bytes!("../../../assets/app-icon/photocraft-1024.png");
-#[cfg(not(target_os = "macos"))]
+#[cfg(all(not(target_os = "macos"), not(feature = "clippy")))]
 const PNG: &[u8] = include_bytes!("../../../assets/app-icon/hicolor/256x256/apps/ai.storyteller.photocraft.png");
+/// Clippy has its own icon on every platform (`assets/app-icon-clippy/`).
+#[cfg(feature = "clippy")]
+const PNG: &[u8] = include_bytes!("../../../assets/app-icon-clippy/hicolor/256x256/apps/io.github.sirjakolben.PhotocraftClippy.png");
 
 #[cfg(test)]
 mod tests {

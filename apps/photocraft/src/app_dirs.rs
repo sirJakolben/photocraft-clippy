@@ -88,7 +88,7 @@ pub fn resolve_recovery(data: &DataDir, env: impl Fn(&str) -> Option<OsString>) 
         && data.mode == Mode::Platform
         && let Some(local) = env("LOCALAPPDATA").filter(|l| !l.is_empty())
     {
-        return Some(PathBuf::from(local).join("Photocraft").join(RECOVERY));
+        return Some(PathBuf::from(local).join(crate::identity::CONFIG_DIRS.0).join(RECOVERY));
     }
     data.dir.as_ref().map(|d| d.join(RECOVERY))
 }
@@ -459,14 +459,19 @@ pub fn resolve(env: impl Fn(&str) -> Option<OsString>, exe_dir: Option<&Path>) -
 
 /// The platform convention, from `env` (so tests can fake `HOME`/`APPDATA`/`XDG_CONFIG_HOME`).
 pub fn platform_dir(env: &impl Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
+    platform_dir_named(env, crate::identity::CONFIG_DIRS)
+}
+
+/// [`platform_dir`] for a given folder name: (macOS and Windows, Linux).
+pub fn platform_dir_named(env: &impl Fn(&str) -> Option<OsString>, (name, linux): (&str, &str)) -> Option<PathBuf> {
     let home = env("HOME").filter(|h| !h.is_empty()).map(PathBuf::from);
     if cfg!(target_os = "macos") {
-        return home.map(|h| h.join("Library/Application Support/Photocraft"));
+        return home.map(|h| h.join("Library/Application Support").join(name));
     }
     if cfg!(windows) {
-        return env("APPDATA").filter(|a| !a.is_empty()).map(|a| PathBuf::from(a).join("Photocraft"));
+        return env("APPDATA").filter(|a| !a.is_empty()).map(|a| PathBuf::from(a).join(name));
     }
-    env("XDG_CONFIG_HOME").filter(|x| !x.is_empty()).map(PathBuf::from).or_else(|| home.map(|h| h.join(".config"))).map(|c| c.join("photocraft"))
+    env("XDG_CONFIG_HOME").filter(|x| !x.is_empty()).map(PathBuf::from).or_else(|| home.map(|h| h.join(".config"))).map(|c| c.join(linux))
 }
 
 /// The first portable marker file in `exe_dir`, if any.
@@ -524,12 +529,13 @@ mod tests {
         assert!(!dir.starts_with(&exe));
         assert!(!exe.join(PORTABLE_DATA_DIR).exists(), "no portable folder without a marker");
         // The convention per platform.
+        let (name, linux) = crate::identity::CONFIG_DIRS;
         if cfg!(target_os = "macos") {
-            assert_eq!(dir, root.join("home/Library/Application Support/Photocraft"));
+            assert_eq!(dir, root.join("home/Library/Application Support").join(name));
         } else if cfg!(windows) {
-            assert_eq!(dir, root.join("appdata").join("Photocraft"));
+            assert_eq!(dir, root.join("appdata").join(name));
         } else {
-            assert_eq!(dir, root.join("home/.config/photocraft"));
+            assert_eq!(dir, root.join("home/.config").join(linux));
         }
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -604,11 +610,11 @@ mod tests {
     #[test]
     fn autosaves_stay_out_of_the_roaming_profile() {
         let root = temp("recovery-local");
-        let settings = root.join("appdata").join("Photocraft");
+        let settings = root.join("appdata").join(crate::identity::CONFIG_DIRS.0);
         let local = root.join("local");
         let env = env_of(&[("LOCALAPPDATA", &local)]);
         let platform = DataDir { dir: Some(settings.clone()), mode: Mode::Platform, warning: None };
-        let expected = if cfg!(windows) { local.join("Photocraft").join("Recovery") } else { settings.join("Recovery") };
+        let expected = if cfg!(windows) { local.join(crate::identity::CONFIG_DIRS.0).join("Recovery") } else { settings.join("Recovery") };
         assert_eq!(resolve_recovery(&platform, &env), Some(expected));
         for mode in [Mode::Override, Mode::Portable] {
             let d = DataDir { dir: Some(settings.clone()), mode, warning: None };
@@ -634,7 +640,7 @@ mod tests {
     fn autosaves_from_the_old_folder_move_to_the_new_one() {
         let root = temp("recovery-move");
         let legacy = root.join("roaming").join("Recovery");
-        let dir = root.join("local").join("Photocraft").join("Recovery");
+        let dir = root.join("local").join(crate::identity::CONFIG_DIRS.0).join("Recovery");
         autosave(&legacy, "a");
         assert_eq!(adopt_legacy_recovery(&legacy, &dir), dir);
         assert!(!legacy.exists(), "the old folder is gone");
