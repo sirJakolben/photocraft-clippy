@@ -717,6 +717,9 @@ fn main() -> eframe::Result {
             let automation = control.as_ref().map(|(_, _, workspace)| workspace.clone());
             let mut services = services::native(automation);
             services.preset_store = presets;
+            // Clippy's interface on top of PhotoCraft's (CLIPPY.md); PhotoCraft draws only its own.
+            #[cfg(feature = "clippy")]
+            photocraft_clippy_ui::install(&mut services);
             #[cfg(target_os = "linux")]
             let display = tablet::DisplayKind::of(cc);
             #[cfg(target_os = "linux")]

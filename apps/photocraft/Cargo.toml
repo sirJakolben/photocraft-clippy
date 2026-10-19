@@ -14,7 +14,7 @@ heif = ["photocraft-codecs/heif"]
 # Clippy (PhotoCraft Extension): the same app with its own identity (app id, settings directory,
 # icon, name), so it runs beside PhotoCraft. Build: `cargo build -p photocraft --features clippy
 # --bin photocraft-clippy`. See `CLIPPY.md`.
-clippy = []
+clippy = ["dep:photocraft-clippy-ui"]
 
 [lints]
 workspace = true
@@ -31,6 +31,8 @@ photocraft-io = { workspace = true }
 photocraft-format = { workspace = true }
 photocraft-automation = { workspace = true }
 photocraft-ui-egui = { workspace = true }
+# Clippy's interface, only in the `clippy` feature.
+photocraft-clippy-ui = { workspace = true, optional = true }
 # Pen tablet pressure/tilt on macOS and X11 (the workspace's one isolated unsafe helper crate).
 photocraft-tablet = { workspace = true }
 eframe = { workspace = true, features = ["wgpu", "accesskit", "wayland", "x11", "persistence"] }

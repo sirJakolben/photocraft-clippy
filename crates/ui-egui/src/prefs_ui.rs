@@ -1282,6 +1282,12 @@ fn prefs_body(ui: &mut egui::Ui, f: &mut Map<String, Value>, system: Option<egui
             egui::ScrollArea::vertical().max_height(content_height - 30.0).id_salt("prefs-scroll").show(ui, |ui| {
                 let order: Vec<String> =
                     f.get("__order").and_then(|o| o.get(&section)).and_then(|v| serde_json::from_value(v.clone()).ok()).unwrap_or_default();
+                // A derived build's own rows first (Clippy's interface mode), on its working copy.
+                if section == "interface"
+                    && let Some(extension) = extension
+                {
+                    (extension.interface_prefs)(ui, &mut values, &filter.to_lowercase());
+                }
                 if !has_visible_fields(&values, &section) {
                     ui.add_space(4.0);
                     ui.label(RichText::new(tl!("These settings aren't available in PhotoCraft yet.")).color(t.text_faint));
@@ -1297,12 +1303,6 @@ fn prefs_body(ui: &mut egui::Ui, f: &mut Map<String, Value>, system: Option<egui
                         gpu_status_rows(ui, f.get("__gpuInfo"), obj);
                     }
                     ui.add_space(8.0);
-                }
-                // A derived build's own rows (Clippy's interface mode), on its working copy.
-                if section == "interface"
-                    && let Some(extension) = extension
-                {
-                    (extension.interface_prefs)(ui, &mut values, &filter.to_lowercase());
                 }
                 if search.trim().is_empty()
                     && has_visible_fields(&values, &section)
