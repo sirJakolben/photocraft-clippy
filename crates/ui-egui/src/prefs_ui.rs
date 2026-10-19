@@ -947,9 +947,16 @@ fn preference_values(p: &prefs::Preferences) -> Map<String, Value> {
     SECTIONS.iter().filter_map(|(id, _)| Some((id.to_string(), values.get(id)?.clone()))).collect()
 }
 
+/// [`preference_values`] plus the preferences a derived build's extension edits in the dialog.
+fn dialog_values(app: &PhotocraftApp) -> Map<String, Value> {
+    let mut values = preference_values(app.session.prefs());
+    crate::extension::add_pref_values(app.services.extension, app.session.prefs(), &mut values);
+    values
+}
+
 /// Compare the editable sections, excluding settings managed outside Preferences.
 pub fn preferences_changed(app: &PhotocraftApp, fields: &Map<String, Value>) -> bool {
-    is_preferences(fields) && fields.get("values").and_then(Value::as_object).is_some_and(|values| *values != preference_values(app.session.prefs()))
+    is_preferences(fields) && fields.get("values").and_then(Value::as_object).is_some_and(|values| *values != dialog_values(app))
 }
 
 /// Commit the working copy and keep the current section open. Failure leaves the draft intact.
@@ -960,7 +967,7 @@ pub fn apply(app: &mut PhotocraftApp, id: u64) -> Result<Value, String> {
     }
     let fields = d.fields.clone();
     let result = confirm(app, &fields)?;
-    let values = Value::Object(preference_values(app.session.prefs()));
+    let values = Value::Object(dialog_values(app));
     if let Some(d) = app.ui.dialog_mut(id) {
         // Use the validated values as the next draft, including any normalisation by prefs.set.
         d.fields.insert("values".into(), values);
@@ -992,7 +999,7 @@ pub fn width(fields: &Map<String, Value>, available: f32) -> Option<f32> {
 /// Open Edit › Preferences on `section`.
 pub fn open_preferences(app: &mut PhotocraftApp, section: &str) -> u64 {
     let section = if SECTIONS.iter().any(|(id, _)| *id == section) { section } else { "general" };
-    let working = preference_values(app.session.prefs());
+    let working = dialog_values(app);
     let order = field_order(app.session.prefs(), &working);
     open_kind(app, "prefs", "Preferences", json!({"section": section, "values": working, "__order": order}))
 }
@@ -1059,7 +1066,7 @@ pub fn body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String, Valu
             info.extend(gpu_memory_lines(app));
             f.insert("__gpuInfo".into(), json!(info));
             let system = system_theme(app, ui.ctx());
-            prefs_body(ui, f, system);
+            prefs_body(ui, f, system, app.services.extension);
         }
         "shortcuts" => shortcuts_body(app, ui, f),
         "presets" => presets_body(app, ui, f),
@@ -1207,7 +1214,7 @@ fn preference_sections(values: &Value, search: &str) -> Vec<(&'static str, &'sta
 }
 
 /// Preferences: section list on the left, the section's settings on the right.
-fn prefs_body(ui: &mut egui::Ui, f: &mut Map<String, Value>, system: Option<egui::Theme>) {
+fn prefs_body(ui: &mut egui::Ui, f: &mut Map<String, Value>, system: Option<egui::Theme>, extension: Option<crate::extension::Extension>) {
     let t = Tokens::get(ui.ctx());
     let mut section = f.get("section").and_then(Value::as_str).unwrap_or("general").to_string();
     let mut values = f.get("values").cloned().unwrap_or(Value::Null);
@@ -1290,6 +1297,12 @@ fn prefs_body(ui: &mut egui::Ui, f: &mut Map<String, Value>, system: Option<egui
                         gpu_status_rows(ui, f.get("__gpuInfo"), obj);
                     }
                     ui.add_space(8.0);
+                }
+                // A derived build's own rows (Clippy's interface mode), on its working copy.
+                if section == "interface"
+                    && let Some(extension) = extension
+                {
+                    (extension.interface_prefs)(ui, &mut values, &filter.to_lowercase());
                 }
                 if search.trim().is_empty()
                     && has_visible_fields(&values, &section)
