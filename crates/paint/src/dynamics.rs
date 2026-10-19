@@ -779,6 +779,8 @@ impl DabBuilder {
                 }
             }
             let radius = (diameter / 2.0).max(0.5);
+            // Without "At least 1 pixel" a dab thinner than a pixel paints in proportion.
+            let thin = if !b.min_one_px && diameter < 1.0 { diameter.max(0.0) } else { 1.0 };
             // Scatter.
             let mut c = Point::new(s.point.x, s.point.y);
             if sc.enabled && sc.scatter.jitter > 0.0 {
@@ -825,7 +827,7 @@ impl DabBuilder {
             out.push(Dab {
                 center: c,
                 radius,
-                alpha: flow.clamp(0.0, 1.0),
+                alpha: (flow * thin).clamp(0.0, 1.0),
                 angle: angle.to_radians(),
                 roundness,
                 flip_x: fx,
@@ -945,7 +947,7 @@ impl DabGenerator {
     }
 
     pub fn new(brush: &BrushSettings, zoom: f32) -> Self {
-        let brush = brush.bounded_for_render();
+        let brush = brush.for_view(zoom).bounded_for_render();
         let interval = brush.build_up.then(|| 1000.0 / f64::from(brush.build_up_rate.clamp(0.1, 1000.0)));
         let dual_on = brush.dual_brush.enabled;
         let mut walker = if brush.spacing_enabled { PathWalker::new(interval) } else { PathWalker::new(interval).speed_spacing(SPEED_SPACING_MS) };

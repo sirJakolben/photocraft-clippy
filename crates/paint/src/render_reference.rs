@@ -118,7 +118,7 @@ impl BrushContext {
                     val = mask_combine(b.texture.mode, val, self.texture_at(x, y), d.depth);
                 }
                 if wet {
-                    val *= wet_factor(rn);
+                    val *= self.wet_at(rn);
                 }
                 if let Some(slot) = depth.as_deref_mut().and_then(|dp| dp.get_mut(yy * w + xx)) {
                     *slot = (1.0 - rn).clamp(0.0, 1.0);
@@ -258,6 +258,18 @@ fn anti_aliasing_steps_match_scalar_bits() {
                     compare(&ctx, &d, true, ctx.dab_rect(&d, true), false);
                 }
             }
+        }
+    }
+}
+
+#[test]
+fn wet_edge_shapes_match_scalar_bits() {
+    for (interior, width) in [(0.5, 0.5), (0.2, 0.8), (1.0, 0.0), (f32::NAN, 2.0)] {
+        let b = BrushSettings { wet_edges: true, wet_edge: crate::brush::WetEdge { interior, width }, hardness: 0.6, ..Default::default() };
+        let ctx = BrushContext::new(&b);
+        for with_depth in [false, true] {
+            let d = Dab::round(Point::new(20.5, 20.25), 12.0, 0.8);
+            compare(&ctx, &d, false, ctx.dab_rect(&d, false), with_depth);
         }
     }
 }

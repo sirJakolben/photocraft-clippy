@@ -373,3 +373,122 @@ fn stickiness_ignores_small_wobbles_and_catches_up_at_the_end() {
     assert!(!s.lagging());
     assert!(serde_json::to_value(Smoothing::default()).unwrap().get("stickiness").is_none());
 }
+
+// ---------- size and the view, at least one pixel ----------
+
+#[test]
+fn size_follows_the_view_zoom_when_asked() {
+    let linked = BrushSettings { size_follows_view: true, ..brush() };
+    let line = timed_line(0.0);
+    assert!(all_dabs(&linked, &line, 2.0).iter().all(|d| d.radius == 5.0), "20 screen px at 200 % = 10 document px");
+    assert!(all_dabs(&linked, &line, 0.5).iter().all(|d| d.radius == 20.0));
+    assert_eq!(all_dabs(&brush(), &line, 2.0), all_dabs(&brush(), &line, 1.0), "off: the zoom only matters to smoothing");
+    for zoom in [0.0, -1.0, f32::NAN, f32::INFINITY] {
+        assert!(all_dabs(&linked, &line, zoom).iter().all(|d| d.radius == 10.0), "a bad zoom ({zoom}) leaves the size");
+    }
+    // Tiny zooms stay within the renderer's bounds.
+    assert!(all_dabs(&BrushSettings { size: 4000.0, ..linked.clone() }, &line[..3], 1e-6).iter().all(|d| d.radius <= MAX_BRUSH_SIZE / 2.0));
+    assert!(json(&brush()).get("sizeFollowsView").is_none());
+}
+
+#[test]
+fn without_at_least_one_pixel_thin_dabs_fade() {
+    // 2 px at 20 % pressure: 0.4 px.
+    let light: Vec<StrokePoint> = timed_line(0.0).into_iter().map(|p| StrokePoint { pressure: 0.2, ..p }).collect();
+    let thin = BrushSettings { size: 2.0, pressure_size: true, ..brush() };
+    assert!(all_dabs(&thin, &light, 1.0).iter().all(|d| d.alpha == 1.0 && d.radius == 0.5), "on: as before");
+    let fading = BrushSettings { min_one_px: false, ..thin };
+    let d = all_dabs(&fading, &light, 1.0);
+    assert!(d.iter().all(|d| (d.alpha - 0.4).abs() < 1e-6 && d.radius == 0.5), "{:?}", d.first());
+    // Thicker dabs are untouched.
+    assert!(all_dabs(&BrushSettings { min_one_px: false, ..brush() }, &timed_line(0.0), 1.0).iter().all(|d| d.alpha == 1.0));
+    // JSON: only "off" is written, and old brushes read as "on".
+    assert!(json(&brush()).get("minOnePx").is_none());
+    assert_eq!(json(&fading)["minOnePx"], false);
+    assert!(serde_json::from_str::<BrushSettings>("{}").unwrap().min_one_px);
+}
+
+// ---------- darken, texture turn, dual texture, wet edge ----------
+
+/// Alpha where a stroke that runs back over itself crosses x = 60.
+fn retraced_alpha(b: &BrushSettings) -> f32 {
+    let pts = [StrokePoint::new(20.0, 50.0, 1.0), StrokePoint::new(100.0, 50.0, 1.0), StrokePoint::new(20.0, 50.0, 1.0)];
+    render(b, &pts).rgba(60, 50)[3]
+}
+
+#[test]
+fn darken_keeps_overlapping_dabs_from_building_up() {
+    let soft = BrushSettings { flow: 0.3, ..brush() };
+    let built = retraced_alpha(&soft);
+    let darkened = retraced_alpha(&BrushSettings { blend_darken: true, ..soft.clone() });
+    assert!(built > 0.9, "flow builds up: {built}");
+    assert!((darkened - 0.3).abs() < 0.01, "darken keeps one dab's coverage: {darkened}");
+    // Under the opacity ceiling too.
+    let capped = retraced_alpha(&BrushSettings {
+        blend_darken: true,
+        transfer: Transfer { enabled: true, opacity: Dynamic::controlled(Control::PenPressure), ..Default::default() },
+        ..soft
+    });
+    assert!(capped <= 0.3 + 1e-4);
+    assert!(json(&brush()).get("blendDarken").is_none());
+}
+
+fn stripes() -> crate::tile::GrayTile {
+    crate::tile::GrayTile::from_fn(8, 8, |x, _| if x < 4 { 0.0 } else { 1.0 })
+}
+
+#[test]
+fn the_texture_turns_and_an_unturned_one_samples_as_before() {
+    let tex = |rotation: f32| {
+        let b = BrushSettings { texture: Texture { enabled: true, pattern: Pattern::Tile(stripes()), rotation, ..Default::default() }, ..brush() };
+        let ctx = BrushContext::new(&b);
+        (0..16).flat_map(|y| (0..16).map(move |x| (x, y))).map(|(x, y)| ctx.texture_at(x, y)).collect::<Vec<f32>>()
+    };
+    let column = |v: &[f32], x: usize| (0..16).map(|y| v[y * 16 + x]).collect::<Vec<f32>>();
+    let row = |v: &[f32], y: usize| v[y * 16..y * 16 + 16].to_vec();
+    let flat = tex(0.0);
+    assert!(column(&flat, 1).iter().all(|&t| t == 0.0) && column(&flat, 5).iter().all(|&t| t == 1.0), "vertical stripes");
+    let turned = tex(90.0);
+    let varies = |v: Vec<f32>| v.iter().any(|&t| t < 0.5) && v.iter().any(|&t| t > 0.5);
+    assert!(!varies(row(&turned, 1)) && varies(column(&turned, 1)), "a quarter turn makes them horizontal");
+    assert_eq!(tex(360.0), flat, "a full turn is no turn");
+    assert_eq!(tex(f32::NAN), flat, "NaN is no turn");
+    assert!(tex(f32::INFINITY).iter().all(|t| t.is_finite()));
+    assert!(serde_json::to_value(Texture::default()).unwrap().get("rotation").is_none());
+}
+
+#[test]
+fn the_dual_brush_texture_masks_the_second_tip() {
+    let dual = DualBrush { enabled: true, size: 30.0, ..Default::default() };
+    let plain = BrushSettings { dual_brush: dual.clone(), ..brush() };
+    let black = Texture { enabled: true, pattern: Pattern::Tile(crate::tile::GrayTile::from_fn(4, 4, |_, _| 0.0)), ..Default::default() };
+    let masked = BrushSettings { dual_brush: DualBrush { texture: black, ..dual.clone() }, ..brush() };
+    let line = timed_line(0.0);
+    assert!(render(&plain, &line).rgba(100, 50)[3] > 0.9);
+    assert_eq!(render(&masked, &line).rgba(100, 50)[3], 0.0, "a black texture on the mask removes the paint");
+    // A disabled dual texture changes nothing and isn't written.
+    let off = BrushSettings { dual_brush: DualBrush { texture: Texture { enabled: false, rotation: 20.0, ..Default::default() }, ..dual }, ..brush() };
+    let region = Rect::new(0, 30, 230, 70);
+    assert_eq!(render(&off, &line).read_region(region), render(&plain, &line).read_region(region));
+    assert!(json(&plain)["dualBrush"].get("texture").is_none());
+}
+
+#[test]
+fn the_wet_edge_shape_sets_interior_and_rim() {
+    let wet = |edge: WetEdge| {
+        let b = BrushSettings { size: 40.0, hardness: 1.0, wet_edges: true, wet_edge: edge, ..brush() };
+        let s = render(&b, &[StrokePoint::new(50.0, 50.0, 1.0)]);
+        (s.rgba(50, 50)[3], s.rgba(50 + 18, 50)[3])
+    };
+    let (centre, rim) = wet(WetEdge::default());
+    assert!((centre - 0.5).abs() < 0.01 && rim > 0.8, "{centre} {rim}");
+    let (centre, _) = wet(WetEdge { interior: 0.2, width: 0.5 });
+    assert!((centre - 0.2).abs() < 0.01, "a lighter interior: {centre}");
+    let (centre, rim) = wet(WetEdge { interior: 1.0, width: 0.5 });
+    assert!(centre > 0.99 && rim > 0.99, "interior 1: no wet look");
+    for bad in [f32::NAN, f32::INFINITY, -1.0, 0.0] {
+        let (c, r) = wet(WetEdge { interior: bad, width: bad });
+        assert!(c.is_finite() && r.is_finite(), "{bad}");
+    }
+    assert!(json(&brush()).get("wetEdge").is_none());
+}

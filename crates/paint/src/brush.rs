@@ -387,9 +387,28 @@ pub struct Texture {
     pub depth: f32,
     /// Depth jitter / control (per tip only); `minimum` is Minimum Depth.
     pub depth_jitter: Dynamic,
+    /// Degrees the pattern is turned counter-clockwise (Clip Studio Paint's texture rotation).
+    /// 0 by default and then not written to JSON.
+    #[serde(skip_serializing_if = "is_zero_f32")]
+    pub rotation: f32,
+}
+
+fn is_zero_f32(v: &f32) -> bool {
+    *v == 0.0
 }
 
 impl Texture {
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+
+    /// The pattern's turn as `(sin, cos)` of the angle, `None` when it isn't turned (or the angle
+    /// isn't finite).
+    pub fn rotation_sin_cos(&self) -> Option<(f32, f32)> {
+        let r = self.rotation.rem_euclid(360.0);
+        (r.is_finite() && r != 0.0).then(|| r.to_radians().sin_cos())
+    }
+
     /// A pattern value (0..1) after Brightness, Contrast and Invert: the value the mode combines
     /// with the brush. Measured against Photoshop (#3340): Brightness shifts the pattern by
     /// `brightness / 255` (±150 moves it 150 levels of 255, not all the way to white or black);
@@ -417,6 +436,7 @@ impl Default for Texture {
             mode: MaskMode::Multiply,
             depth: 1.0,
             depth_jitter: Dynamic::default(),
+            rotation: 0.0,
         }
     }
 }
@@ -437,6 +457,10 @@ pub struct DualBrush {
     pub both_axes: bool,
     pub count: u32,
     pub flip: bool,
+    /// A texture on the second tip's mask as a whole (Clip Studio Paint's dual brush texture);
+    /// its `each_tip` and depth jitter don't apply. Off by default and then not written to JSON.
+    #[serde(skip_serializing_if = "Texture::is_default")]
+    pub texture: Texture,
 }
 
 impl Default for DualBrush {
@@ -454,6 +478,7 @@ impl Default for DualBrush {
             both_axes: false,
             count: 1,
             flip: false,
+            texture: Texture::default(),
         }
     }
 }
@@ -593,6 +618,41 @@ impl Default for Smoothing {
     }
 }
 
+fn is_true(v: &bool) -> bool {
+    *v
+}
+
+/// How Wet Edges shapes the stroke: the paint left at a pixel goes from `interior` deep inside
+/// the stroke up to all of it at the rim, over the outer `width` of a dab's radius.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct WetEdge {
+    /// 0..1 share of the paint the interior keeps (PhotoCraft: half).
+    pub interior: f32,
+    /// 0..1 share of the dab radius the darker rim spans (PhotoCraft: the outer half).
+    pub width: f32,
+}
+
+impl Default for WetEdge {
+    fn default() -> Self {
+        Self { interior: 0.5, width: 0.5 }
+    }
+}
+
+impl WetEdge {
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+
+    /// `(interior, width)` clamped to 0..1, the defaults standing in for NaN; the width is at
+    /// least a hundredth, so the rim never becomes a division by zero.
+    pub fn sanitised(&self) -> (f32, f32) {
+        let d = Self::default();
+        let f = |v: f32, fallback: f32| if v.is_nan() { fallback } else { v.clamp(0.0, 1.0) };
+        (f(self.interior, d.interior), f(self.width, d.width).max(0.01))
+    }
+}
+
 /// Clip Studio Paint's Start and End: the stroke grows from nothing over its first `start` pixels
 /// of path and shrinks to nothing over its last `end` pixels. Where the stroke ends is known only
 /// when the pen lifts, so its last `end` pixels of dabs wait for that (a live preview shows them
@@ -705,6 +765,20 @@ pub struct BrushSettings {
     /// its bitmap's own edge unless the step is 0.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub aa_level: Option<u8>,
+    /// Clip Studio Paint's "At least 1 pixel". On (the default, as PhotoCraft always painted) a
+    /// dab is never thinner than one pixel; off, a dab thinner than that fades with its diameter
+    /// instead, so a stroke thinning out vanishes smoothly. Written to JSON only when off.
+    #[serde(skip_serializing_if = "is_true")]
+    pub min_one_px: bool,
+    /// Clip Studio Paint's "Sync size with view": `size` is in screen pixels, so the dabs are
+    /// `size / zoom` document pixels (the zoom the stroke is painted at). Off by default and then
+    /// not written to JSON.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub size_follows_view: bool,
+    /// Clip Studio Paint's "Blend brush strokes with darken": overlapping dabs keep the stronger
+    /// coverage instead of building up. Off by default and then not written to JSON.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub blend_darken: bool,
     // --- dynamics sections ---
     pub shape_dynamics: ShapeDynamics,
     pub scattering: Scattering,
@@ -717,6 +791,10 @@ pub struct BrushSettings {
     pub noise: bool,
     /// Watercolour look: lighter interior, darker rims; overlapping dabs don't build up.
     pub wet_edges: bool,
+    /// The Wet Edges shape (Clip Studio Paint's watercolour edge parameters); the default is
+    /// PhotoCraft's own and then not written to JSON.
+    #[serde(skip_serializing_if = "WetEdge::is_default")]
+    pub wet_edge: WetEdge,
     /// Airbrush: keep depositing dabs over time while the pointer lingers.
     pub build_up: bool,
     /// Build-up rate in dabs per second.
@@ -759,6 +837,9 @@ impl Default for BrushSettings {
             aliased: false,
             square: false,
             aa_level: None,
+            min_one_px: true,
+            size_follows_view: false,
+            blend_darken: false,
             shape_dynamics: ShapeDynamics::default(),
             scattering: Scattering::default(),
             texture: Texture::default(),
@@ -768,6 +849,7 @@ impl Default for BrushSettings {
             pose: Pose::default(),
             noise: false,
             wet_edges: false,
+            wet_edge: WetEdge::default(),
             build_up: false,
             build_up_rate: 20.0,
             smoothing: Smoothing::default(),
@@ -807,6 +889,19 @@ impl BrushSettings {
             }
         }
         self.size = new_size;
+    }
+
+    /// The settings a stroke painted at view `zoom` uses: with [`Self::size_follows_view`] the
+    /// sizes are screen pixels and become `size / zoom` document pixels (bounded by
+    /// [`Self::bounded_for_render`] afterwards); otherwise unchanged.
+    pub fn for_view(&self, zoom: f32) -> std::borrow::Cow<'_, Self> {
+        if !self.size_follows_view || !(zoom.is_finite() && zoom > 0.0) || zoom == 1.0 {
+            return std::borrow::Cow::Borrowed(self);
+        }
+        let mut b = self.clone();
+        b.size /= zoom;
+        b.dual_brush.size /= zoom;
+        std::borrow::Cow::Owned(b)
     }
 
     /// Copy the settings with the primary and dual diameters and Scatter amounts constrained for
