@@ -1,35 +1,43 @@
 <p align="center">
-  <a href="https://getartcraft.com/">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="docs/brand/artcraft-logo-white.svg">
-      <img alt="ArtCraft" src="docs/brand/artcraft-logo.svg" width="200">
-    </picture>
-  </a>
+  <img alt="Clippy" src="assets/app-icon-clippy/clippy.svg" width="128">
 </p>
 
-<h1 align="center">PhotoCraft</h1>
+<h1 align="center">Clippy (PhotoCraft Extension)</h1>
+
+<p align="center">
+  <b>PhotoCraft with a Clip Studio Paint–style interface.</b><br>
+  Free docking palettes on every window edge, tools that hold sub-tool groups you arrange yourself,<br>
+  and Clip Studio Paint sub-tool files (<code>.sut</code>) as the native brush format.
+</p>
+
+<p align="center">
+  <img alt="100% Rust" src="https://img.shields.io/badge/100%25-Rust-b7410e?style=flat-square&logo=rust">
+  <img alt="License: MIT OR Apache-2.0" src="https://img.shields.io/badge/license-MIT%20%2F%20Apache--2.0-3a3a3a?style=flat-square">
+  <img alt="Status: in development" src="https://img.shields.io/badge/status-in%20development-d69e2e?style=flat-square">
+</p>
+
+> **Status:** in development. Today Clippy builds and runs as PhotoCraft with its own name, icon
+> and settings, side by side with an installed PhotoCraft. The Clip Studio Paint–style interface
+> lands milestone by milestone; see [`CLIPPY.md`](CLIPPY.md).
+
+Clippy is an independent fork of [PhotoCraft](https://github.com/storytold/photocraft) by the
+ArtCraft team. It is not made, sponsored or endorsed by the ArtCraft team or by CELSYS, Inc.
+Everything below this section is PhotoCraft's own README and describes the editor Clippy is built
+on.
+
+```sh
+cargo build --release -p photocraft --features clippy --bin photocraft-clippy
+./target/release/photocraft-clippy
+```
+
+---
+
+<h2 align="center">PhotoCraft</h2>
 
 <p align="center">
   <b>Image editing; an open-source, clean-room reimplementation of Adobe Photoshop, rebuilt in pure Rust.</b><br>
   Layers, masks, adjustment layers, layer styles, type, vectors, brushes and real PSD files,<br>
   in a native app written entirely in Rust. Open source, offline, and yours.
-</p>
-
-<p align="center">
-  <img alt="100% Rust" src="https://img.shields.io/badge/100%25-Rust-b7410e?style=flat-square&logo=rust">
-  <img alt="macOS · Windows · Linux · FreeBSD · Web" src="https://img.shields.io/badge/macOS%20%C2%B7%20Windows%20%C2%B7%20Linux%20%C2%B7%20FreeBSD%20%C2%B7%20Web-native-2f7bf5?style=flat-square">
-  <img alt="License: MIT OR Apache-2.0" src="https://img.shields.io/badge/license-MIT%20%2F%20Apache--2.0-3a3a3a?style=flat-square">
-  <img alt="Status: early alpha" src="https://img.shields.io/badge/status-early%20alpha-d69e2e?style=flat-square">
-</p>
-
-<p align="center">
-  <a href="https://discord.gg/artcraft"><img alt="Join the ArtCraft community on Discord" src="https://img.shields.io/badge/Join%20us%20on%20Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" height="40"></a>
-</p>
-
-<p align="center">
-  <a href="https://getartcraft.com/apps/photocraft"><b>PhotoCraft on getartcraft.com</b></a> ·
-  <a href="https://getartcraft.com/">ArtCraft</a> ·
-  <a href="https://getartcraft.com/apps">All Crafting Apps</a>
 </p>
 
 <br>
@@ -433,16 +441,18 @@ with its author, source and license in [ATTRIBUTION.md](ATTRIBUTION.md).
 
 Every artwork shown is in the public domain (Wikimedia Commons, NASA, U.S. National Archives); sources are listed in [`docs/images/SOURCES.md`](docs/images/SOURCES.md).
 
-The ArtCraft name, wordmark and logos in [`docs/brand/`](docs/brand/) are trademarks of the
-ArtCraft Team and are not covered by this license. They may be used only unmodified, and only as
-part of this repository and PhotoCraft, under [`docs/brand/LICENSE-brand.txt`](docs/brand/LICENSE-brand.txt).
-Forks and modified versions must remove them.
+The ArtCraft name, wordmark and logos are trademarks of the ArtCraft Team and are not covered by
+this license ([`docs/brand/LICENSE-brand.txt`](docs/brand/LICENSE-brand.txt)). As that license
+requires of forks, Clippy does not include the logo files.
+
+<sub>CLIP STUDIO PAINT and CLIP STUDIO are trademarks or registered trademarks of CELSYS, Inc. Clippy
+is an independent, open-source project and is not affiliated with, sponsored by or endorsed by
+CELSYS, Inc.; these names are used only to describe the workflows it is compatible with.</sub>
 
 <sub>Adobe, Photoshop, Illustrator, Premiere Pro, Lightroom, Acrobat, After Effects and InDesign are trademarks or registered trademarks of Adobe Inc. in the United States and/or other countries. PhotoCraft is an independent, open-source project and is not affiliated with, sponsored by or endorsed by Adobe Inc.; these names are used only to describe the workflows it is compatible with.</sub>
 
 <p align="center">
-  <a href="https://getartcraft.com/"><img alt="ArtCraft" src="docs/brand/artcraft-mark.svg" width="28"></a><br>
-  <sub>Made by the <a href="https://getartcraft.com/">ArtCraft</a> team and community.</sub>
+  <sub>PhotoCraft is made by the <a href="https://getartcraft.com/">ArtCraft</a> team and community. Clippy is based on it.</sub>
 </p>
 
 ## Star history
