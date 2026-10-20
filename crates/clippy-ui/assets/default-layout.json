@@ -1,0 +1,149 @@
+{
+  "root": {
+    "Split": {
+      "axis": "Horizontal",
+      "size": {
+        "FixedFirst": 280.0
+      },
+      "first": {
+        "Split": {
+          "axis": "Vertical",
+          "size": {
+            "FixedFirst": 170.0
+          },
+          "first": {
+            "Tabs": {
+              "panels": [
+                "subTool"
+              ],
+              "active": 0
+            }
+          },
+          "second": {
+            "Split": {
+              "axis": "Vertical",
+              "size": {
+                "FixedFirst": 300.0
+              },
+              "first": {
+                "Tabs": {
+                  "panels": [
+                    "toolProperty"
+                  ],
+                  "active": 0
+                }
+              },
+              "second": {
+                "Split": {
+                  "axis": "Vertical",
+                  "size": {
+                    "FixedFirst": 220.0
+                  },
+                  "first": {
+                    "Tabs": {
+                      "panels": [
+                        "colorSet",
+                        "intermediateColor",
+                        "colorHistory",
+                        "colorMixing"
+                      ],
+                      "active": 0
+                    }
+                  },
+                  "second": {
+                    "Tabs": {
+                      "panels": [
+                        "colorWheel",
+                        "colorSlider"
+                      ],
+                      "active": 1
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "second": {
+        "Split": {
+          "axis": "Horizontal",
+          "size": {
+            "FixedSecond": 260.0
+          },
+          "first": {
+            "Tabs": {
+              "panels": [
+                "canvas"
+              ],
+              "active": 0
+            }
+          },
+          "second": {
+            "Split": {
+              "axis": "Vertical",
+              "size": {
+                "FixedFirst": 180.0
+              },
+              "first": {
+                "Tabs": {
+                  "panels": [
+                    "navigator",
+                    "info",
+                    "histogram"
+                  ],
+                  "active": 0
+                }
+              },
+              "second": {
+                "Split": {
+                  "axis": "Vertical",
+                  "size": {
+                    "FixedSecond": 520.0
+                  },
+                  "first": {
+                    "Tabs": {
+                      "panels": [
+                        "layer",
+                        "history",
+                        "autoAction"
+                      ],
+                      "active": 0
+                    }
+                  },
+                  "second": {
+                    "Split": {
+                      "axis": "Vertical",
+                      "size": {
+                        "FixedFirst": 170.0
+                      },
+                      "first": {
+                        "Tabs": {
+                          "panels": [
+                            "layerProperty",
+                            "channels",
+                            "paths"
+                          ],
+                          "active": 0
+                        }
+                      },
+                      "second": {
+                        "Tabs": {
+                          "panels": [
+                            "tool"
+                          ],
+                          "active": 0
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "floating": []
+}

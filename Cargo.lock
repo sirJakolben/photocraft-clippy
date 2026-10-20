@@ -4778,11 +4778,14 @@ dependencies = [
 name = "photocraft-clippy-ui"
 version = "0.10.0"
 dependencies = [
+ "craft-ui",
  "egui",
  "egui_kittest",
+ "log",
  "photocraft-clippy-stock",
  "photocraft-engine",
  "photocraft-ui-egui",
+ "serde",
  "serde_json",
 ]
 
