@@ -892,6 +892,10 @@ mod tests {
         if matches!(id, "prefs.get" | "prefs.reset") {
             return false;
         }
+        // photocraft-clippy: these report the active sub tool's file; they take no path.
+        if matches!(id, "clippy.subtool.get" | "clippy.subtool.writeBack" | "clippy.subtool.reset" | "clippy.subtool.saveAsDefault") {
+            return false;
+        }
         // These registry descriptions refer to document vector paths, not host files.
         if matches!(
             id,

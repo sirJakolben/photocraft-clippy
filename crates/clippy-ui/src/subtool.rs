@@ -115,7 +115,10 @@ pub fn tick(app: &mut PhotocraftApp, pointer_down: bool) {
         st.active = None;
     } else if (away || loaded.as_deref() != Some(want.as_str())) && st.failed.as_deref() != Some(want.as_str()) {
         if let Err(e) = app.run(SUBTOOL_SELECT, json!({"path": want})) {
-            state(app).failed = Some(want);
+            // The preference names another sub tool now: the old one is no longer written to.
+            let st = state(app);
+            st.failed = Some(want);
+            st.active = None;
             app.ui.status = e;
         }
         return;
@@ -128,13 +131,16 @@ pub fn tick(app: &mut PhotocraftApp, pointer_down: bool) {
     }
 }
 
-/// Whether the working copy moved since it was last applied or written back.
+/// Whether the working copy moved since it was last applied or written back, while it is the
+/// sub tool's (another tool's brush is never written into it).
 fn changed(app: &mut PhotocraftApp) -> bool {
+    let Some(tool) = state(app).active.as_ref().and_then(|a| a.choice.tool()) else { return false };
+    if !owns_working_copy(app, tool) {
+        return false;
+    }
     let rev = app.session.tools.brush_rev;
     let (options, mode, snap) = (app.ui.tool_options.clone(), app.ui.selection_mode, app.ui.extras.snap);
-    state(app).active.as_ref().is_some_and(|a| {
-        a.choice.tool().is_some() && (a.brush_rev != rev || a.applied.options != options || a.applied.selection_mode != mode || a.applied.snap != snap)
-    })
+    state(app).active.as_ref().is_some_and(|a| a.brush_rev != rev || a.applied.options != options || a.applied.selection_mode != mode || a.applied.snap != snap)
 }
 
 /// PhotoCraft's working copy as it is now.
@@ -194,6 +200,10 @@ fn activate(app: &mut PhotocraftApp, path: &str, sut: Sut) -> Result<(), String>
         Choice::Tool { tool, extra } => {
             let variant = sut.subtool.variant.as_ref().ok_or_else(|| tl!("The sub tool has no settings (no NodeVariantID).").to_string())?;
             apply(app, *tool, *extra, &Source { variant, materials: &sut.subtool.materials, ctx });
+            if *tool == Tool::Eraser && variant.flag(photocraft_clippy_sut::known::BRUSH_ERASE_ALL_LAYER) == Some(true) {
+                app.ui.status =
+                    format!("{}: {}", sut.subtool.name(), tl!("PhotoCraft erases on the current layer only; erasing all layers stays in the sub tool."));
+            }
         }
         Choice::Unsupported { reason } => {
             app.ui.status = format!("{}: {reason}. {}", sut.subtool.name(), tl!("The sub tool is selected; PhotoCraft's tool stays as it is."));

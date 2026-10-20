@@ -4,7 +4,7 @@
 
 use photocraft_clippy_sut::{Source, Sources, Variant, known as k};
 use photocraft_engine::paint::GrayTile;
-use photocraft_engine::paint::brush::{Control, Dynamic, MAX_BRUSH_SIZE, MAX_SCATTER, MAX_TIPS, Pattern, SpeedSmoothing, TipOrder, TipShape};
+use photocraft_engine::paint::brush::{Control, Dynamic, MAX_BRUSH_SIZE, MAX_SCATTER, Pattern, SpeedSmoothing, TipOrder, TipShape};
 use serde_json::{Value, json};
 
 use super::cols::{effector, effector_for_write, flag, int, num, num_in, percent, put_flag, put_int, put_num, put_percent};
@@ -81,7 +81,7 @@ fn tiles(src: &Src<'_>, column: &str) -> Vec<GrayTile> {
     let Some(Ok(refs)) = src.variant.material_refs(column) else { return Vec::new() };
     refs.entries
         .iter()
-        .take(MAX_TIPS)
+        .take(photocraft_engine::paint::brush::MAX_TIPS)
         .filter_map(|r| {
             let material = src.materials.iter().find(|m| m.catalog_path().is_some_and(|c| r.path.starts_with(c)))?;
             let archive = material.archive(&limits).ok()?;
