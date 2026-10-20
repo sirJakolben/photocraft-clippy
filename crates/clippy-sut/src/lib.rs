@@ -29,6 +29,8 @@ mod effector;
 pub mod known;
 pub mod layer;
 mod model;
+#[cfg(all(feature = "synth", not(target_arch = "wasm32")))]
+pub mod synth;
 mod value;
 
 #[cfg(not(target_arch = "wasm32"))]

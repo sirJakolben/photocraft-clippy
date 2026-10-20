@@ -93,10 +93,27 @@ fn open_bytes(bytes: &[u8]) -> Result<Connection> {
     if bytes.len() < 100 || !bytes.starts_with(b"SQLite format 3\0") {
         return malformed("tool database", "not an SQLite database");
     }
+    // A cut-off file must not read as a shorter valid one: SQLite fills missing pages of an
+    // in-memory image with zeros. The header's page count is valid when the change counter
+    // (offset 24) equals the version-valid-for number (offset 92).
+    let be = |at: usize| bytes.get(at..at + 4).and_then(|b| <[u8; 4]>::try_from(b).ok()).map(u32::from_be_bytes);
+    let page_size = bytes.get(16..18).map_or(0, |b| match u16::from_be_bytes([b[0], b[1]]) {
+        1 => 65_536,
+        v => usize::from(v),
+    });
+    if let (Some(pages), Some(counter), Some(valid_for)) = (be(28), be(24), be(92)) {
+        if counter == valid_for && pages != 0 && (pages as usize).checked_mul(page_size) != Some(bytes.len()) {
+            return malformed("tool database", format!("{} bytes, the header says {pages} pages of {page_size}", bytes.len()));
+        }
+    }
     let mut conn = Connection::open_in_memory_with_flags(OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX)?;
     conn.deserialize_read_exact("main", bytes, bytes.len(), true)?;
     // Hostile schemas must not run code (views, triggers) and corrupt pages must fail early.
     conn.execute_batch("PRAGMA trusted_schema = OFF; PRAGMA cell_size_check = ON; PRAGMA query_only = ON;")?;
+    let check: String = conn.query_row("PRAGMA quick_check(1)", [], |r| r.get(0))?;
+    if check != "ok" {
+        return malformed("tool database", check);
+    }
     Ok(conn)
 }
 
