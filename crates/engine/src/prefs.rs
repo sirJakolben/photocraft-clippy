@@ -1053,9 +1053,8 @@ pub const HIDDEN_UNTIL_IMPLEMENTED: &[&str] = &[
     // by these yet.
     "integrations.allowAgentControl",
     "integrations.controlPort",
-    // photocraft-clippy: the sub tool stock (M7) and dock layouts (M2).
+    // photocraft-clippy: the sub tool stock (M7).
     "clippy.stockDir",
-    "clippy.layouts",
 ];
 
 /// Is the preference at `path` (`"section.key"`) hidden from the Preferences dialog?
