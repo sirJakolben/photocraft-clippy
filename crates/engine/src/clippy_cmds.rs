@@ -746,7 +746,7 @@ mod tests {
     }
 }
 
-#[cfg(all(test, not(target_arch = "wasm32")))]
+#[cfg(test)]
 mod stock_tests {
     use std::path::{Path, PathBuf};
 
