@@ -741,6 +741,11 @@ fn main() -> eframe::Result {
             #[cfg(not(target_os = "linux"))]
             let session = Session::new();
             let mut app = PhotocraftApp::new(session, services);
+            // Clippy's saved workspaces: `<settings folder>/workspaces/<name>.json`.
+            #[cfg(feature = "clippy")]
+            {
+                app.session.clippy.workspace_dir = services::config_dir().map(|dir| dir.join("workspaces"));
+            }
             app.min_frame_ms = uncapped.then_some(1000.0 / 240.0);
             app.integrated_titlebar = cfg!(target_os = "macos");
             app.custom_titlebar = custom_titlebar;

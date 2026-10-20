@@ -4787,6 +4787,7 @@ dependencies = [
  "photocraft-ui-egui",
  "serde",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]

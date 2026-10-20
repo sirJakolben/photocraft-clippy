@@ -24,6 +24,21 @@ pub const LAYOUT_RESET: &str = "clippy.layout.reset";
 pub const LAYOUT_KEY: &str = "clippy";
 /// Largest layout accepted, as JSON text: a full layout of every palette is a few KiB.
 pub const MAX_LAYOUT_BYTES: usize = 256 * 1024;
+/// Window › Workspace › New Workspace…: store the current layout under a name,
+/// `{"name": "…", "overwrite"?: bool}`.
+pub const WORKSPACE_SAVE: &str = "clippy.workspace.save";
+/// Window › Workspace › a workspace: make its layout the current one, `{"name": "…"}`.
+pub const WORKSPACE_LOAD: &str = "clippy.workspace.load";
+/// Window › Workspace › Delete Workspace…: `{"name": "…"}`.
+pub const WORKSPACE_DELETE: &str = "clippy.workspace.delete";
+/// The saved workspaces' names: `{}` → `{"workspaces": [...]}`.
+pub const WORKSPACE_LIST: &str = "clippy.workspace.list";
+/// Longest workspace name, in characters.
+pub const MAX_WORKSPACE_NAME: usize = 64;
+/// Most workspaces kept (and read from the folder).
+pub const MAX_WORKSPACES: usize = 256;
+/// The `format` of a workspace file.
+const WORKSPACE_FORMAT: &str = "photocraft-clippy-workspace";
 
 /// Which interface Clippy shows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -48,6 +63,17 @@ pub struct ClippyPrefs {
     pub stock_dir: String,
     /// The dock layout of each mode, by mode id (M2). JSON owned by `photocraft-clippy-ui`.
     pub layouts: Value,
+}
+
+/// Clippy's session state outside the preferences: where the saved workspaces live.
+#[derive(Clone, Debug, Default)]
+pub struct ClippyState {
+    /// The workspace folder (desktop: `<settings folder>/workspaces`, one `<name>.json` each).
+    /// `None`, as in headless sessions, tests and the web, keeps workspaces in memory for the
+    /// session.
+    pub workspace_dir: Option<std::path::PathBuf>,
+    /// The workspaces of a session without a folder: name → layout.
+    memory: std::collections::BTreeMap<String, Value>,
 }
 
 impl ClippyMode {
@@ -118,7 +144,220 @@ pub fn specs() -> Vec<CommandSpec> {
             run: |s, _| store_layout(s, Value::Null),
             journal: false,
         },
+        CommandSpec {
+            id: WORKSPACE_SAVE,
+            label: "New Clippy Workspace",
+            menu: &[],
+            shortcut: None,
+            params: r##"{"name":string,"overwrite"?:bool} → {name, layout}: store the current Clippy layout (preference clippy.layouts.clippy) as a workspace, a file <settings folder>/workspaces/<name>.json (in memory without a settings folder). Names are 1–64 characters without / \ : * ? " < > | or control characters and don't start with a dot; an existing workspace of that name (any case) is an error unless overwrite is true"##,
+            enabled: |_| Ok(()),
+            run: workspace_save,
+            journal: false,
+        },
+        CommandSpec {
+            id: WORKSPACE_LOAD,
+            label: "Load Clippy Workspace",
+            menu: &[],
+            shortcut: None,
+            params: r##"{"name":string} → {name, layout}: make a saved workspace's layout the current Clippy layout (clippy.layout.set); it stays after a restart"##,
+            enabled: |_| Ok(()),
+            run: workspace_load,
+            journal: false,
+        },
+        CommandSpec {
+            id: WORKSPACE_DELETE,
+            label: "Delete Clippy Workspace",
+            menu: &[],
+            shortcut: None,
+            params: r##"{"name":string} → {name}: delete a saved workspace (the current layout stays)"##,
+            enabled: |_| Ok(()),
+            run: workspace_delete,
+            journal: false,
+        },
+        CommandSpec {
+            id: WORKSPACE_LIST,
+            label: "List Clippy Workspaces",
+            menu: &[],
+            shortcut: None,
+            params: r##"{} → {workspaces: [name]}: the saved workspaces, sorted by name"##,
+            enabled: |_| Ok(()),
+            run: |s, _| Ok(json!({"workspaces": workspace_names(s)})),
+            journal: false,
+        },
     ]
+}
+
+/// A workspace name from the params, trimmed and checked: it becomes a file name.
+fn workspace_name(cmd: &str, p: &Value) -> Result<String> {
+    let bad = |msg: String| EngineError::BadParams { cmd: cmd.into(), msg };
+    let name = match p.get("name") {
+        Some(Value::String(name)) => name.trim(),
+        Some(_) => return Err(bad("`name` must be a string".into())),
+        None => return Err(bad("missing `name`".into())),
+    };
+    let count = name.chars().count();
+    if count == 0 || count > MAX_WORKSPACE_NAME {
+        return Err(bad(format!("`name` must have 1–{MAX_WORKSPACE_NAME} characters")));
+    }
+    if name.chars().any(|c| c.is_control() || "/\\:*?\"<>|".contains(c)) || name.starts_with('.') || name.ends_with('.') {
+        return Err(bad(format!("`{name}` can't be a workspace name: no / \\ : * ? \" < > |, control characters or dot at either end")));
+    }
+    Ok(name.to_string())
+}
+
+/// The saved workspace whose name matches `name` regardless of case (file systems may not tell
+/// them apart).
+fn find_workspace(s: &Session, name: &str) -> Option<String> {
+    let lower = name.to_lowercase();
+    workspace_names(s).into_iter().find(|n| n.to_lowercase() == lower)
+}
+
+/// The saved workspaces' names, sorted case-insensitively; at most [`MAX_WORKSPACES`].
+pub fn workspace_names(s: &Session) -> Vec<String> {
+    let mut names: Vec<String> = match s.clippy.workspace_dir.as_deref() {
+        Some(dir) => store::names(dir),
+        None => s.clippy.memory.keys().cloned().collect(),
+    };
+    names.retain(|n| workspace_name("", &json!({"name": n})).is_ok_and(|ok| &ok == n));
+    names.sort_by_key(|n| (n.to_lowercase(), n.clone()));
+    names.truncate(MAX_WORKSPACES);
+    names
+}
+
+fn workspace_save(s: &mut Session, p: &Value) -> Result<Value> {
+    let name = workspace_name(WORKSPACE_SAVE, p)?;
+    let overwrite = match p.get("overwrite") {
+        None | Some(Value::Null) => false,
+        Some(Value::Bool(b)) => *b,
+        Some(_) => return Err(EngineError::BadParams { cmd: WORKSPACE_SAVE.into(), msg: "`overwrite` must be true or false".into() }),
+    };
+    let existing = find_workspace(s, &name);
+    if existing.is_some() && !overwrite {
+        return Err(EngineError::Other(format!("a workspace named `{name}` exists; pass \"overwrite\": true to replace it")));
+    }
+    if existing.is_none() && workspace_names(s).len() >= MAX_WORKSPACES {
+        return Err(EngineError::Other(format!("there are {MAX_WORKSPACES} workspaces already; delete one first")));
+    }
+    // An existing one keeps its file (and so its spelling).
+    let name = existing.unwrap_or(name);
+    let layout = s.prefs().clippy.layouts.get(LAYOUT_KEY).cloned().unwrap_or(Value::Null);
+    match s.clippy.workspace_dir.clone() {
+        Some(dir) => {
+            let file = json!({"format": WORKSPACE_FORMAT, "version": 1, "name": name, "layout": layout});
+            store::write(&dir, &name, &file).map_err(EngineError::Other)?;
+        }
+        None => {
+            s.clippy.memory.insert(name.clone(), layout.clone());
+        }
+    }
+    Ok(json!({"name": name, "layout": layout}))
+}
+
+fn workspace_load(s: &mut Session, p: &Value) -> Result<Value> {
+    let asked = workspace_name(WORKSPACE_LOAD, p)?;
+    let name = find_workspace(s, &asked).ok_or_else(|| EngineError::Other(format!("no workspace named `{asked}`")))?;
+    let layout = match s.clippy.workspace_dir.as_deref() {
+        Some(dir) => {
+            let file = store::read(dir, &name).map_err(EngineError::Other)?;
+            match file.get("layout") {
+                Some(v @ (Value::Object(_) | Value::Null)) => v.clone(),
+                _ => return Err(EngineError::Other(format!("the workspace `{name}` has no layout"))),
+            }
+        }
+        None => s.clippy.memory.get(&name).cloned().unwrap_or(Value::Null),
+    };
+    let out = layout_set(s, &json!({"layout": layout}))?;
+    Ok(json!({"name": name, "layout": out.get("layout").cloned().unwrap_or(Value::Null)}))
+}
+
+fn workspace_delete(s: &mut Session, p: &Value) -> Result<Value> {
+    let asked = workspace_name(WORKSPACE_DELETE, p)?;
+    let name = find_workspace(s, &asked).ok_or_else(|| EngineError::Other(format!("no workspace named `{asked}`")))?;
+    match s.clippy.workspace_dir.as_deref() {
+        Some(dir) => store::remove(dir, &name).map_err(EngineError::Other)?,
+        None => {
+            s.clippy.memory.remove(&name);
+        }
+    }
+    Ok(json!({"name": name}))
+}
+
+/// The workspace folder on disk. Every read is bounded; an unreadable file is skipped or an
+/// error, never a panic.
+#[cfg(not(target_arch = "wasm32"))]
+mod store {
+    use std::path::{Path, PathBuf};
+
+    use serde_json::Value;
+
+    /// Largest workspace file read: a layout plus its name.
+    const MAX_FILE_BYTES: u64 = super::MAX_LAYOUT_BYTES as u64 + 4096;
+
+    fn path(dir: &Path, name: &str) -> PathBuf {
+        dir.join(format!("{name}.json"))
+    }
+
+    /// The names of the `*.json` files in `dir` (none when it doesn't exist yet).
+    pub fn names(dir: &Path) -> Vec<String> {
+        let Ok(entries) = std::fs::read_dir(dir) else { return Vec::new() };
+        entries
+            .filter_map(|e| e.ok())
+            .take(super::MAX_WORKSPACES.saturating_mul(4))
+            .filter(|e| e.file_type().is_ok_and(|t| t.is_file()))
+            .filter_map(|e| e.file_name().to_str().and_then(|n| n.strip_suffix(".json")).map(str::to_string))
+            .collect()
+    }
+
+    pub fn read(dir: &Path, name: &str) -> Result<Value, String> {
+        use std::io::Read;
+        let path = path(dir, name);
+        let file = std::fs::File::open(&path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+        let mut text = String::new();
+        file.take(MAX_FILE_BYTES + 1).read_to_string(&mut text).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+        if text.len() as u64 > MAX_FILE_BYTES {
+            return Err(format!("{} is larger than a workspace can be", path.display()));
+        }
+        let value: Value = serde_json::from_str(&text).map_err(|e| format!("{} is not a workspace: {e}", path.display()))?;
+        if value.get("format").and_then(Value::as_str) != Some(super::WORKSPACE_FORMAT) {
+            return Err(format!("{} is not a photocraft-clippy workspace", path.display()));
+        }
+        Ok(value)
+    }
+
+    pub fn write(dir: &Path, name: &str, value: &Value) -> Result<(), String> {
+        let path = path(dir, name);
+        let text = serde_json::to_string_pretty(value).map_err(|e| e.to_string())?;
+        photocraft_format::atomic_write(&path, text.as_bytes()).map_err(|e| e.to_string())
+    }
+
+    pub fn remove(dir: &Path, name: &str) -> Result<(), String> {
+        let path = path(dir, name);
+        std::fs::remove_file(&path).map_err(|e| format!("cannot delete {}: {e}", path.display()))
+    }
+}
+
+/// The web has no folder: [`ClippyState::workspace_dir`] is never set there.
+#[cfg(target_arch = "wasm32")]
+mod store {
+    use std::path::Path;
+
+    use serde_json::Value;
+
+    pub fn names(_: &Path) -> Vec<String> {
+        Vec::new()
+    }
+
+    pub fn read(_: &Path, name: &str) -> Result<Value, String> {
+        Err(format!("no workspace named `{name}`"))
+    }
+
+    pub fn write(_: &Path, _: &str, _: &Value) -> Result<(), String> {
+        Err("this build can't write files".into())
+    }
+
+    pub fn remove(_: &Path, name: &str) -> Result<(), String> {
+        Err(format!("no workspace named `{name}`"))
+    }
 }
 
 fn layout_set(s: &mut Session, p: &Value) -> Result<Value> {
@@ -286,6 +525,119 @@ mod tests {
             let err = s.execute(LAYOUT_SET, p.clone()).unwrap_err();
             assert!(matches!(err, EngineError::BadParams { .. }), "{p}: {err}");
             assert_eq!(s.prefs().clippy.layouts, Value::Null, "{p}");
+        }
+    }
+
+    fn layout(panel: &str) -> Value {
+        json!({"root": {"Split": {"axis": "Horizontal", "size": {"FixedFirst": 200.0}, "first": {"Tabs": {"panels": [panel], "active": 0}}, "second": {"Tabs": {"panels": ["canvas"], "active": 0}}}}, "floating": []})
+    }
+
+    /// Save, list, load and delete, in memory and in a folder.
+    #[test]
+    fn workspaces_save_load_and_delete() {
+        let dir = tempfile::tempdir().unwrap();
+        for folder in [None, Some(dir.path().join("workspaces"))] {
+            let mut s = Session::new();
+            s.clippy.workspace_dir = folder.clone();
+            assert_eq!(s.execute(WORKSPACE_LIST, json!({})).unwrap(), json!({"workspaces": []}));
+            s.execute(LAYOUT_SET, json!({"layout": layout("layer")})).unwrap();
+            assert_eq!(s.execute(WORKSPACE_SAVE, json!({"name": " Painting "})).unwrap(), json!({"name": "Painting", "layout": layout("layer")}));
+            s.execute(LAYOUT_SET, json!({"layout": layout("info")})).unwrap();
+            s.execute(WORKSPACE_SAVE, json!({"name": "comic"})).unwrap();
+            assert_eq!(s.execute(WORKSPACE_LIST, Value::Null).unwrap(), json!({"workspaces": ["comic", "Painting"]}));
+            if let Some(folder) = &folder {
+                let text = std::fs::read_to_string(folder.join("Painting.json")).unwrap();
+                assert!(text.contains("photocraft-clippy-workspace") && text.contains("\"layer\""), "{text}");
+            }
+
+            // Loading sets the current layout, any case of the name finds it.
+            assert_eq!(s.execute(WORKSPACE_LOAD, json!({"name": "painting"})).unwrap()["name"], "Painting");
+            assert_eq!(s.prefs().clippy.layouts[LAYOUT_KEY], layout("layer"));
+            // The same name again needs `overwrite`, and keeps its spelling.
+            assert!(matches!(s.execute(WORKSPACE_SAVE, json!({"name": "COMIC"})), Err(EngineError::Other(_))));
+            assert_eq!(s.execute(WORKSPACE_SAVE, json!({"name": "COMIC", "overwrite": true})).unwrap()["name"], "comic");
+            s.execute(WORKSPACE_LOAD, json!({"name": "comic"})).unwrap();
+            assert_eq!(s.prefs().clippy.layouts[LAYOUT_KEY], layout("layer"));
+
+            assert_eq!(s.execute(WORKSPACE_DELETE, json!({"name": "Painting"})).unwrap(), json!({"name": "Painting"}));
+            assert_eq!(s.execute(WORKSPACE_LIST, json!({})).unwrap(), json!({"workspaces": ["comic"]}));
+            assert!(s.execute(WORKSPACE_LOAD, json!({"name": "Painting"})).is_err());
+            assert!(s.execute(WORKSPACE_DELETE, json!({"name": "Painting"})).is_err());
+            assert_eq!(s.prefs().clippy.layouts[LAYOUT_KEY], layout("layer"), "deleting keeps the current layout");
+        }
+    }
+
+    /// A default layout (null) is a workspace too.
+    #[test]
+    fn the_default_layout_saves_as_null() {
+        let mut s = Session::new();
+        s.execute(LAYOUT_SET, json!({"layout": layout("layer")})).unwrap();
+        s.execute(LAYOUT_RESET, json!({})).unwrap();
+        s.execute(WORKSPACE_SAVE, json!({"name": "Default"})).unwrap();
+        s.execute(LAYOUT_SET, json!({"layout": layout("layer")})).unwrap();
+        assert_eq!(s.execute(WORKSPACE_LOAD, json!({"name": "Default"})).unwrap()["layout"], Value::Null);
+        assert_eq!(s.prefs().clippy.layouts[LAYOUT_KEY], Value::Null);
+    }
+
+    #[test]
+    fn bad_workspace_params_are_errors_and_change_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut s = Session::new();
+        s.clippy.workspace_dir = Some(dir.path().to_path_buf());
+        s.execute(LAYOUT_SET, json!({"layout": layout("layer")})).unwrap();
+        s.execute(WORKSPACE_SAVE, json!({"name": "Keep"})).unwrap();
+        let long = "x".repeat(MAX_WORKSPACE_NAME + 1);
+        for id in [WORKSPACE_SAVE, WORKSPACE_LOAD, WORKSPACE_DELETE] {
+            for p in [
+                json!({}),
+                Value::Null,
+                json!([]),
+                json!("Keep"),
+                json!({"name": null}),
+                json!({"name": 1}),
+                json!({"name": ["Keep"]}),
+                json!({"name": ""}),
+                json!({"name": "   "}),
+                json!({"name": long}),
+                json!({"name": "../Keep"}),
+                json!({"name": "a/b"}),
+                json!({"name": "a\\b"}),
+                json!({"name": ".hidden"}),
+                json!({"name": "dot."}),
+                json!({"name": "C:x"}),
+                json!({"name": "a\u{0}b"}),
+                json!({"name": "line\nbreak"}),
+                json!({"name": "what?"}),
+            ] {
+                let err = s.execute(id, p.clone()).unwrap_err();
+                assert!(matches!(err, EngineError::BadParams { .. }), "{id} {p}: {err}");
+            }
+        }
+        assert!(matches!(s.execute(WORKSPACE_SAVE, json!({"name": "New", "overwrite": "yes"})), Err(EngineError::BadParams { .. })));
+        assert_eq!(s.execute(WORKSPACE_LIST, json!({})).unwrap(), json!({"workspaces": ["Keep"]}));
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1, "nothing written beside the folder");
+    }
+
+    /// Files a user or another program put in the folder: skipped or an error, never a panic.
+    #[test]
+    fn broken_workspace_files_are_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut s = Session::new();
+        s.clippy.workspace_dir = Some(dir.path().to_path_buf());
+        s.execute(LAYOUT_SET, json!({"layout": layout("layer")})).unwrap();
+        let write = |name: &str, text: &str| std::fs::write(dir.path().join(name), text).unwrap();
+        write("Text.json", "not json");
+        write("Other.json", r#"{"layout": {}}"#);
+        write("NoLayout.json", r#"{"format": "photocraft-clippy-workspace", "layout": 3}"#);
+        write("Huge.json", &format!(r#"{{"format": "photocraft-clippy-workspace", "layout": {{"x": "{}"}}}}"#, "a".repeat(MAX_LAYOUT_BYTES + 8192)));
+        write("Big.json", &format!(r#"{{"format": "photocraft-clippy-workspace", "layout": {{"x": "{}"}}}}"#, "a".repeat(MAX_LAYOUT_BYTES)));
+        write(".hidden.json", "{}");
+        write("readme.txt", "");
+        std::fs::create_dir(dir.path().join("Folder.json")).unwrap();
+        assert_eq!(s.execute(WORKSPACE_LIST, json!({})).unwrap(), json!({"workspaces": ["Big", "Huge", "NoLayout", "Other", "Text"]}));
+        for name in ["Text", "Other", "NoLayout", "Huge", "Big", "Folder"] {
+            assert!(s.execute(WORKSPACE_LOAD, json!({"name": name})).is_err(), "{name}");
+            assert_eq!(s.prefs().clippy.layouts[LAYOUT_KEY], layout("layer"), "{name}");
         }
     }
 

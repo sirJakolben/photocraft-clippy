@@ -20,6 +20,8 @@ serde_json = { workspace = true }
 # Contexts made in tests lay out text with egui's own fonts, as in photocraft-ui-egui's tests.
 egui = { workspace = true, features = ["default_fonts"] }
 egui_kittest = { workspace = true, features = ["wgpu", "snapshot", "eframe"] }
+# Workspace folders of the tests.
+tempfile = "3"
 
 [lints]
 workspace = true
