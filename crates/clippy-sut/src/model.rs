@@ -283,6 +283,16 @@ impl SubTool {
         self.node.int(col::LOCK).is_some_and(|v| v != 0)
     }
 
+    /// Sets `NodeLock`. False (nothing changed) when the node has no such column: a written
+    /// `.sut` only holds the columns of its template.
+    pub fn set_lock(&mut self, on: bool) -> bool {
+        if self.node.get(col::LOCK).is_none() {
+            return false;
+        }
+        self.node.set(col::LOCK, Value::Integer(i64::from(on)));
+        true
+    }
+
     /// `NodeDefaultIdentifier`: id of Clip Studio Paint's built-in sub tool this one is (0 = own).
     pub fn default_identifier(&self) -> Option<i64> {
         self.node.int(col::DEFAULT_IDENTIFIER)

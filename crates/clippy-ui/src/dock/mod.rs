@@ -152,6 +152,8 @@ pub fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     header::decorate(ui, &groups, &style, locked, &mut gestures);
     rail::show(app, ui, &rails, locked, &mut gestures);
     workspace::dialogs(app, &ctx);
+    crate::palettes::dialogs(app, &ctx);
+    crate::palettes::drag_ghost(app, &ctx);
 
     for action in output.actions {
         live.dirty |= apply(&mut live.layout, view.real_action(action), locked);

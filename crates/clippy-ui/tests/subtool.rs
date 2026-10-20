@@ -221,6 +221,16 @@ fn bad_params_and_states_are_errors() {
     for id in ["clippy.subtool.writeBack", "clippy.subtool.reset", "clippy.subtool.saveAsDefault"] {
         assert!(app.run(id, json!({})).is_err(), "{id} without a sub tool");
     }
+    assert!(app.run("clippy.subtool.lock", json!({"on": true})).is_err(), "lock without a sub tool");
+    let path = dir.join("gpen.sut");
+    common::gpen().save(&path).unwrap();
+    app.run("clippy.subtool.select", json!({"path": path})).unwrap();
+    for p in [json!({}), json!({"on": 1}), json!({"on": "yes"}), json!([true])] {
+        assert!(app.run("clippy.subtool.lock", p.clone()).is_err(), "{p}");
+    }
+    assert!(!Sut::open(&path).unwrap().subtool.lock());
+    app.run("prefs.set", json!({"path": "clippy.subtool", "value": ""})).unwrap();
+    subtool::tick(&mut app, false);
     for p in [
         json!({}),
         json!({"path": 1}),

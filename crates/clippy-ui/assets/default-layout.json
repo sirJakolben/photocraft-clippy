@@ -9,7 +9,7 @@
         "Split": {
           "axis": "Vertical",
           "size": {
-            "FixedFirst": 170.0
+            "FixedFirst": 250.0
           },
           "first": {
             "Tabs": {
@@ -23,7 +23,7 @@
             "Split": {
               "axis": "Vertical",
               "size": {
-                "FixedFirst": 300.0
+                "FixedFirst": 260.0
               },
               "first": {
                 "Tabs": {
@@ -37,7 +37,7 @@
                 "Split": {
                   "axis": "Vertical",
                   "size": {
-                    "FixedFirst": 220.0
+                    "FixedFirst": 160.0
                   },
                   "first": {
                     "Tabs": {

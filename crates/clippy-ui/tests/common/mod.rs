@@ -131,7 +131,7 @@ pub fn rich_brush_values() -> Vec<(&'static str, Value)> {
 }
 
 /// A scratch folder, removed again when dropped.
-pub struct TempDir(std::path::PathBuf);
+pub struct TempDir(pub std::path::PathBuf);
 
 impl std::ops::Deref for TempDir {
     type Target = std::path::Path;

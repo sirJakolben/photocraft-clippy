@@ -94,7 +94,8 @@ impl PhotocraftApp {
     /// Show a file dialog; `then` continues with the user's choice on a later frame (see the
     /// module docs). Returns at once with `{"fileDialog": "open" | "folder" | "save"}`; `Err` without a
     /// dialog service ("cancelled", as before there were async dialogs) or while one is open.
-    pub(crate) fn ask_file(
+    /// Public for an extension's own dialogs ([`crate::extension`]).
+    pub fn ask_file(
         &mut self,
         request: FileDialogRequest,
         then: impl FnOnce(&mut Self, FileDialogAnswer) -> Result<Value, String> + 'static,
@@ -120,8 +121,9 @@ impl PhotocraftApp {
     }
 
     /// Ask the user to choose a folder, starting in the folder of the most recent file when known.
-    /// `then` receives the selected path when the dialog is answered.
-    pub(crate) fn ask_folder(&mut self, then: impl FnOnce(&mut Self, String) -> Result<Value, String> + 'static) -> Result<Value, String> {
+    /// `then` receives the selected path when the dialog is answered. Public for an extension's
+    /// own dialogs ([`crate::extension`]).
+    pub fn ask_folder(&mut self, then: impl FnOnce(&mut Self, String) -> Result<Value, String> + 'static) -> Result<Value, String> {
         let initial_dir = last_used_dir(&self.ui.recent_files);
         self.ask_file(FileDialogRequest::Folder { initial_dir }, move |app, answer| match answer {
             FileDialogAnswer::FolderTo(path) => then(app, path),

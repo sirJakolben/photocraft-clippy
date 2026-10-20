@@ -18,6 +18,7 @@ macro_rules! tl {
 pub mod dock;
 pub mod mapping;
 pub mod mode;
+pub mod palettes;
 pub mod subtool;
 
 use photocraft_ui_egui::extension::Extension;
@@ -33,7 +34,7 @@ pub fn extension() -> Extension {
         interface_prefs: mode::interface_prefs,
         invoke,
         command: subtool::command,
-        frame: subtool::frame,
+        frame,
         hides_brush_presets: true,
     }
 }
@@ -44,8 +45,8 @@ pub fn install(services: &mut Services) {
 }
 
 /// The Clippy interface: PhotoCraft's menu and status bars around Clippy's docks. Until the
-/// tool property palette (M4, M9) PhotoCraft's option bar stays above the docks, so every tool
-/// keeps its options. Without chrome (a screen mode that hides it) only the canvas shows, as in
+/// option bar becomes a palette (M4) PhotoCraft's option bar stays above the docks, so every tool
+/// keeps the options Tool Property doesn't show. Without chrome (a screen mode that hides it) only the canvas shows, as in
 /// PhotoCraft.
 fn draw(app: &mut PhotocraftApp, ui: &mut egui::Ui, chrome: bool) {
     if !chrome {
@@ -65,16 +66,27 @@ fn draw(app: &mut PhotocraftApp, ui: &mut egui::Ui, chrome: bool) {
     egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.chrome)).show(ui, |ui| dock::show(app, ui));
 }
 
-/// Clippy's menu items: in Clippy mode its workspaces in Window › Workspace and its palettes in
-/// Window; always the interface switch and the workspace reset, in Window › Interface.
+/// Once per frame: in Clippy mode the palettes follow the sub tool stock on disk, then the active
+/// sub tool's data flow runs (`subtool::frame`, which also notices Photoshop mode).
+fn frame(app: &mut PhotocraftApp, ctx: &egui::Context) {
+    if mode::active(app) {
+        palettes::frame(app);
+    }
+    subtool::frame(app, ctx);
+}
+
+/// Clippy's menu items: in Clippy mode its workspaces in Window › Workspace, its palettes in
+/// Window and Edit › Brushes; always the interface switch and the workspace reset, in Window ›
+/// Interface.
 fn menu_items(app: &PhotocraftApp, items: &mut Vec<photocraft_ui_egui::menus::MenuItem>) {
+    palettes::brushes::menu_items(app, items);
     dock::workspace::menu_items(app, items);
     mode::menu_items(app, items);
     dock::menu_items(app, items);
 }
 
 /// Clippy's own menu ids, in Clippy mode: a palette in Window, a workspace and the workspace
-/// dialogs in Window › Workspace.
+/// dialogs in Window › Workspace, Edit › Brushes.
 fn invoke(app: &mut PhotocraftApp, ctx: &egui::Context, id: &str, params: &serde_json::Value) -> Option<Result<serde_json::Value, String>> {
     if !mode::active(app) {
         return None;
@@ -82,6 +94,9 @@ fn invoke(app: &mut PhotocraftApp, ctx: &egui::Context, id: &str, params: &serde
     if let Some(panel) = id.strip_prefix(dock::PALETTE_PREFIX) {
         let panel = serde_json::from_value::<dock::panels::PanelId>(serde_json::Value::String(panel.into()));
         return Some(panel.map_err(|_| format!("no palette `{id}`")).and_then(|p| dock::toggle_palette(app, ctx, p)));
+    }
+    if let Some(done) = palettes::brushes::invoke(app, id, params) {
+        return Some(done);
     }
     dock::workspace::invoke(app, ctx, id, params)
 }

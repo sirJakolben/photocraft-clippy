@@ -94,9 +94,8 @@ The layout is the preference `clippy.layouts.clippy`, written only by `clippy.la
 `clippy.workspace.load`; null is the default from `crates/clippy-ui/assets/default-layout.json`.
 An unreadable saved layout shows the default with a note in the status bar. Palette ids, titles,
 icons and bodies are in `crates/clippy-ui/src/dock/panels.rs`; PhotoCraft's panels draw through
-`extension::photocraft_panel`. Until Clippy's own palettes exist, the Tool palette shows
-PhotoCraft's tool column and the other new palettes (Sub Tool, Tool Property, colour palettes)
-show a note.
+`extension::photocraft_panel`. Tool, Sub Tool and Tool Property are Clippy's own (see Tool
+palettes); the palettes still to come (command bar, colour palettes) show a note.
 
 Around craft_ui's dock area (M3, `crates/clippy-ui/src/dock`):
 
@@ -203,8 +202,8 @@ The app names its settings folder at start, so the default stock is `<settings f
 Sub tools downloaded from CLIP STUDIO ASSETS (`Material/…/material_0.tool`) are encrypted and not
 read; once added to a palette in Clip Studio Paint they are in its `.todb`, or export them as `.sut`.
 
-Open: nothing in the interface shows the stock (M9), and whether Clip Studio Paint opens the `.sut`
-files Clippy writes for `.abr` brushes and with packed materials is untested.
+Open: whether Clip Studio Paint opens the `.sut` files Clippy writes for `.abr` brushes and with
+packed materials is untested.
 
 | File                                  | Hook                                                                  |
 |---------------------------------------|-----------------------------------------------------------------------|
@@ -306,6 +305,54 @@ guesses (a name a file doesn't have maps nothing and is never written).
 
 Tests: `cargo test -p photocraft-clippy-ui --test mapping --test subtool` (synthetic `.sut` only;
 with `CLIPPY_CSP_FIXTURES` also every real export under `Sut-Exporte`).
+
+## Tool palettes
+
+The Tool, Sub Tool and Tool Property palettes and Edit › Brushes (M9, `crates/clippy-ui/src/palettes`)
+show the stock and change it only through the commands above. Each palette's module documents its
+interaction (click, drag, context menu, empty states).
+
+- The stock opens in the background and stays live (`palettes::View` over `LiveStock`); a changed
+  `clippy.stockDir` opens the new folder. When the active sub tool's file moves (dragged into
+  another group, renamed, moved in a file manager) `subtool::retarget` takes the preference
+  `clippy.subtool` and the data flow along; when it is deleted nothing is selected.
+- **Tool**: one icon per tool, the icon of the group it shows (a group's own icon, else the
+  PhotoCraft tool its first sub tool maps to); a click selects the sub tool the tool used last.
+  Main, sub and transparent colour under the icons; the transparent colour is PhotoCraft's Clear
+  mode of the brush and the pencil.
+- **Sub Tool**: group tabs, tiles in two columns with a stroke preview drawn by PhotoCraft's brush
+  engine (`brush_preview`; at most three `.sut` files read per frame, cached by size and time),
+  Add Sub Tool (import), New (a sub tool from PhotoCraft's current tool and brush), Duplicate,
+  Delete. Dragging a tile onto a tile, a tab or a tool icon moves it; a tab onto a tab or a tool
+  icon moves the group; a tool icon onto another reorders. Ctrl copies.
+- **Tool Property**: the settings whose eye is on in the sub tool (`VariantShowParam`), in their
+  order, as far as PhotoCraft has them. The id table is in `palettes/quick.rs`, matched against
+  Clip Studio Paint's palettes: 1000 brush size, 10 opacity, 30 blending mode, 20 anti-aliasing,
+  1030 hardness, 1020 brush density, 40 stabilization, 41 adjust by speed, 1043 continuous spray,
+  1050 thickness, 1201 watercolor edge, 1081/1083/1085 amount, density and stretch of paint, 1091
+  blur strength, 3000 selection mode, 5200 follow adjacent pixels, 5120 color margin, 5001
+  multiple referencing, 5130 anti-aliasing of the fill, 4100 eyedropper sample, 4010 auto select,
+  7001 text size. The lock is `clippy.subtool.lock {"on"}` (`NodeLock`): a locked sub tool's file
+  isn't written; unlocking reloads it. The Sub Tool Detail button waits for M11.
+- **Edit › Brushes** replaces Edit › Toolbar… in Clippy mode: Import Brushes… (`.sut` into the
+  group shown, `.todb` with Clip Studio Paint's material folder found beside it or asked for,
+  `.abr`), Export Brushes…, Save Brushes As…. Their menu ids (`clippy.brushes.*`) open the
+  platform file dialogs; with `{"file"}` or `{"to"}` they run at once.
+
+| File                                  | Hook                                                                  |
+|---------------------------------------|-----------------------------------------------------------------------|
+| `crates/clippy-ui/src/palettes`       | New: the palettes, the stroke previews, Edit › Brushes                |
+| `crates/clippy-stock/src/model.rs`    | `SubToolEntry::{input_op, output_op}` (the kind of tool, for icons)   |
+| `crates/clippy-sut/src/model.rs`      | `SubTool::set_lock`                                                   |
+| `crates/engine/src/clippy_cmds.rs`    | `clippy.subtool.lock`                                                 |
+| `crates/ui-egui/src/file_dialog.rs`   | `ask_file`, `ask_folder` public, for the extension's dialogs          |
+
+Snapshot with a stock (a copy of one, never your own folder):
+
+```sh
+cargo run --release -p photocraft-clippy-ui --example snapshot -- --out ui.png --lang de \
+    --stock /path/to/stock-copy --subtool "Pen/Glatt/G-Pen"
+```
 
 ## Trademarks
 

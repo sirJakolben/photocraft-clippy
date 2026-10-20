@@ -3267,3 +3267,78 @@ curves	Smooth	Glätten
 	No sub tool is selected.	Es ist kein Sub-Tool ausgewählt.
 	The sub tool has no initial settings (no NodeInitVariantID).	Das Sub-Tool hat keine Anfangseinstellungen (keine NodeInitVariantID).
 	PhotoCraft erases on the current layer only; erasing all layers stays in the sub tool.	PhotoCraft radiert nur auf der aktuellen Ebene; das Radieren aller Ebenen bleibt im Sub-Tool gespeichert.
+
+# photocraft-clippy: the tool palettes and Edit › Brushes (crates/clippy-ui/src/palettes)
+	Add Sub Tool	Sub-Tool hinzufügen
+	Add to selection	Zur Auswahl hinzufügen
+	Adjust by speed	Nach Geschwindigkeit anpassen
+	Amount of paint	Menge an Farbe
+	Another tool is in use. Select the sub tool again to change its settings.	Ein anderes Werkzeug ist in Gebrauch. Wähle das Sub-Tool erneut, um seine Einstellungen zu ändern.
+	Anti-aliasing	Anti-Aliasing
+	Blending mode	Füllmethode
+	Blur strength	Weichzeichen-Intensität
+	Brush Size	Pinselgröße
+	Brush density	Pinseldichte
+	Brushes exported to	Pinsel exportiert nach
+	Choose Clip Studio Paint's material folder (CLIPStudioCommon/Material) for the brush tips.	Wähle den Materialordner von Clip Studio Paint (CLIPStudioCommon/Material) für die Pinselspitzen.
+	Choose a sub tool group first (or create one).	Wähle zuerst eine Sub-Tool-Gruppe (oder lege eine an).
+	Choose a sub tool group first.	Wähle zuerst eine Sub-Tool-Gruppe.
+	Color margin	Farbabstufung
+	Color stretch	Farbausdehnung
+	Continuous spray	Fortlaufend sprühen
+	Default Icon	Standardsymbol
+	Delete Sub Tool	Sub-Tool löschen
+	Delete Sub Tool Group	Sub-Tool-Gruppe löschen
+	Delete Tool	Werkzeug löschen
+	Density of paint	Farbdichte
+	Duplicate Sub Tool	Sub-Tool duplizieren
+	Export Brushes…	Pinsel exportieren…
+	Follow adjacent pixels	Angrenzenden Pixeln folgen
+	Icon	Symbol
+	Imported:	Importiert:
+	Intersect with selection	Schnittmenge mit Auswahl bilden
+	Lock the sub tool: changes are not saved	Sub-Tool sperren: Änderungen werden nicht gespeichert
+	Main color	Hauptfarbe
+	Move the object at the clicked position	Bewegen Sie das Objekt der angeklickten Position.
+	Multiple referencing	Auf mehrere beziehen
+	New Sub Tool	Neues Sub-Tool
+	New Sub Tool Group	Neue Sub-Tool-Gruppe
+	New Sub Tool Group…	Neue Sub-Tool-Gruppe…
+	New Sub Tool…	Neues Sub-Tool…
+	New Tool	Neues Werkzeug
+	New Tool…	Neues Werkzeug…
+	No settings	Keine Einstellungen
+	No sub tools in this group – add or import them.	Keine Sub-Tools in dieser Gruppe – hinzufügen oder importieren.
+	No sub tools – add or import them.	Keine Sub-Tools – hinzufügen oder importieren.
+	Reading the sub tool stock stopped unexpectedly.	Das Lesen des Sub-Tool-Bestands brach unerwartet ab.
+	Reading the sub tools…	Sub-Tools werden gelesen…
+	Rename Sub Tool	Sub-Tool umbenennen
+	Rename Sub Tool Group	Sub-Tool-Gruppe umbenennen
+	Rename Sub Tool Group…	Sub-Tool-Gruppe umbenennen…
+	Rename Sub Tool…	Sub-Tool umbenennen…
+	Rename Tool	Werkzeug umbenennen
+	Rename Tool…	Werkzeug umbenennen…
+	Sample	Referenz
+	Save Brushes As…	Pinsel speichern unter…
+	Select Sub Tool	Sub-Tool wählen
+	Selection mode	Auswahlmodus
+	Stabilization	Stabilisierung
+	Sub Tool Detail (in a later version)	Sub-Tool-Details (in einer späteren Version)
+	Sub color	Nebenfarbe
+	Sub tools can only be imported in the desktop app.	Sub-Tools lassen sich nur in der Desktop-App importieren.
+	Subtract from selection	Von Auswahl abziehen
+	The brushes are now saved in	Die Pinsel liegen jetzt in
+	The sub tool stock couldn't be opened:	Der Sub-Tool-Bestand ließ sich nicht öffnen:
+	The sub tool stock couldn't be read:	Der Sub-Tool-Bestand ließ sich nicht lesen:
+	The sub tool stock isn't open.	Der Sub-Tool-Bestand ist nicht geöffnet.
+	This sub tool file can't be locked (it has no NodeLock column).	Diese Sub-Tool-Datei lässt sich nicht sperren (keine Spalte NodeLock).
+	This sub tool has no settings PhotoCraft can use.	Dieses Sub-Tool hat keine Einstellungen, die PhotoCraft nutzen kann.
+	This tool has no sub tool group to take the sub tool.	Dieses Werkzeug hat keine Sub-Tool-Gruppe, die das Sub-Tool aufnehmen kann.
+	This tool has no sub tool groups – right-click to add one.	Dieses Werkzeug hat keine Sub-Tool-Gruppen – Rechtsklick, um eine anzulegen.
+	Transparent color	Transparenzfarbe
+	Unlock the sub tool	Sub-Tool entsperren
+	Watercolor edge	Wasserfarbenrand
+	Weak	Schwach
+	a sub tool of this name exists in the group.	in der Gruppe gibt es schon ein Sub-Tool dieses Namens.
+	moved to the trash.	in den Papierkorb verschoben.
+	only .sut, .todb and .abr files can be imported.	nur .sut-, .todb- und .abr-Dateien lassen sich importieren.
