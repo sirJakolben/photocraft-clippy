@@ -27,7 +27,7 @@ mod bytes;
 mod db;
 mod effector;
 pub mod known;
-// TODO(M6): `pub mod layer;` (.layer codec, see hand-over notes)
+pub mod layer;
 mod model;
 mod value;
 
