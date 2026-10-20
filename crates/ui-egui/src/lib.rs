@@ -86,6 +86,7 @@ pub mod egui_fonts;
 pub mod enable_rules;
 pub mod eraser_ui;
 pub mod export_dialog;
+pub mod extension;
 pub mod eyedropper_ui;
 pub mod field_tab;
 pub mod file_dialog;
@@ -560,6 +561,9 @@ pub struct Services {
     /// while AppKit's run loop is still going crashes or hangs Touch Bar Macs (#1575, #1458).
     /// Without one, eframe closes the window and the app ends with it.
     pub quit: Option<QuitFn>,
+    /// A derived build's own interface (Clippy), drawn instead of PhotoCraft's panels while it is
+    /// active; `None` in PhotoCraft (`extension`).
+    pub extension: Option<extension::Extension>,
 }
 
 /// A document histogram being computed off the UI thread: (document, revision, receiver of
@@ -1874,6 +1878,35 @@ impl PhotocraftApp {
     }
 }
 
+impl PhotocraftApp {
+    /// PhotoCraft's window chrome around the canvas: the title bar with the menus, the options
+    /// bar, the status bar, the toolbar, the right dock and the document area, each as the
+    /// panels and the screen mode (`chrome`) show them. A derived build's interface draws it
+    /// unchanged until it has its own (`extension`).
+    pub fn photocraft_chrome(&mut self, ui: &mut egui::Ui, chrome: bool) {
+        if chrome && self.ui.panels.menu_bar {
+            panels::title_bar(self, ui);
+        }
+        if chrome && self.ui.panels.options_bar {
+            panels::options_bar(self, ui);
+        }
+        if chrome && self.ui.panels.status_bar {
+            panels::status_bar(self, ui);
+        }
+        if chrome && self.ui.panels.toolbar {
+            panels::toolbar(self, ui);
+        }
+        if chrome && self.ui.panels.dock {
+            panels::right_dock(self, ui);
+        }
+        let t = theme::Tokens::get(ui.ctx());
+        let backdrop = if chrome { prefs_ui::pasteboard_color(self).unwrap_or(t.canvas) } else { egui::Color32::BLACK };
+        egui::CentralPanel::default().frame(egui::Frame::NONE.fill(backdrop)).show(ui, |ui| {
+            canvas::document_area(self, ui);
+        });
+    }
+}
+
 impl eframe::App for PhotocraftApp {
     fn on_exit(&mut self) {
         if let Err(err) = tool_memory::save_on_exit(self) {
@@ -2049,26 +2082,11 @@ impl eframe::App for PhotocraftApp {
         // system title bar this is where the document name lives, as the in-app title is hidden.
         panels::sync_window_title(self, &ctx);
         let chrome = !self.ui.view.hides_chrome();
-        if chrome && self.ui.panels.menu_bar {
-            panels::title_bar(self, ui);
+        // A derived build (Clippy) may draw its own interface here (`extension`).
+        match self.active_extension() {
+            Some(extension) => (extension.ui)(self, ui, chrome),
+            None => self.photocraft_chrome(ui, chrome),
         }
-        if chrome && self.ui.panels.options_bar {
-            panels::options_bar(self, ui);
-        }
-        if chrome && self.ui.panels.status_bar {
-            panels::status_bar(self, ui);
-        }
-        if chrome && self.ui.panels.toolbar {
-            panels::toolbar(self, ui);
-        }
-        if chrome && self.ui.panels.dock {
-            panels::right_dock(self, ui);
-        }
-        let t = theme::Tokens::get(&ctx);
-        let backdrop = if chrome { prefs_ui::pasteboard_color(self).unwrap_or(t.canvas) } else { egui::Color32::BLACK };
-        egui::CentralPanel::default().frame(egui::Frame::NONE.fill(backdrop)).show(ui, |ui| {
-            canvas::document_area(self, ui);
-        });
         panels::properties_window(self, &ctx);
         brush_panel::window(self, &ctx);
         preset_panels::windows(self, &ctx);

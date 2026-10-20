@@ -1,0 +1,22 @@
+[package]
+name = "photocraft-clippy-ui"
+description = "Clippy (PhotoCraft Extension): a Clip Studio Paint–style interface for PhotoCraft"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+photocraft-clippy-stock = { workspace = true }
+photocraft-engine = { workspace = true }
+photocraft-ui-egui = { workspace = true }
+egui = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+# Contexts made in tests lay out text with egui's own fonts, as in photocraft-ui-egui's tests.
+egui = { workspace = true, features = ["default_fonts"] }
+egui_kittest = { workspace = true, features = ["wgpu", "snapshot", "eframe"] }
+
+[lints]
+workspace = true

@@ -1037,6 +1037,11 @@ pub fn menu_items(app: &PhotocraftApp) -> Vec<MenuItem> {
             MenuItem { id: "---".into(), label: "---".into(), path: vec!["Help".into()], shortcut: None, enabled: false, checked: None, color: None },
         );
     }
+    // A derived build's own items (Clippy's Window › Interface), before the documents and before
+    // Edit › Menus hides or tints items (`extension`).
+    if let Some(extension) = app.services.extension {
+        (extension.menu_items)(app, &mut items);
+    }
     // Window: the open documents in tab order, after a separator, the active one checked.
     if let Some(last) = items.iter().rposition(|i| i.path.first().map(String::as_str) == Some("Window")) {
         let window = || vec!["Window".to_string()];

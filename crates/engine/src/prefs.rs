@@ -991,6 +991,9 @@ pub struct Preferences {
     pub view_extras: Value,
     /// File › Scripts › Script Events Manager: event → script bindings.
     pub script_events: crate::automate_cmds::ScriptEvents,
+    /// Clippy (PhotoCraft Extension): its interface mode, sub tool stock and layouts. PhotoCraft
+    /// never reads it; files without it load the defaults (`crate::clippy_cmds`).
+    pub clippy: crate::clippy_cmds::ClippyPrefs,
 }
 
 /// Preferences dialog sections in Photoshop's order: (id, title).
@@ -1050,6 +1053,9 @@ pub const HIDDEN_UNTIL_IMPLEMENTED: &[&str] = &[
     // by these yet.
     "integrations.allowAgentControl",
     "integrations.controlPort",
+    // Clippy (PhotoCraft Extension): the sub tool stock (M7) and dock layouts (M2).
+    "clippy.stockDir",
+    "clippy.layouts",
 ];
 
 /// Is the preference at `path` (`"section.key"`) hidden from the Preferences dialog?

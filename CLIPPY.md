@@ -50,6 +50,37 @@ Where the identity is decided (the fork's hook points into upstream files; keep 
 | `crates/ui-egui/src/{panels,dialogs,links,menus,brand,canvas}.rs` | Read `identity::get()` instead of fixed PhotoCraft values |
 | `crates/ui-egui/src/i18n/de.tsv`       | German strings of the fork, in one block at the end               |
 
+## Interface: Clippy ↔ Photoshop
+
+Clippy shows either its own interface or PhotoCraft's (Window › Interface, or Preferences ›
+Interface). The choice is the preference `clippy.mode` (`null` until chosen, which means Clippy),
+set by `clippy.mode.set {"mode": "clippy"|"photoshop"}`; it switches at once and survives a
+restart. PhotoCraft registers the `clippy.*` commands but shows them nowhere and never reads the
+preference. Until the docks (M2), Clippy mode draws PhotoCraft's panels as a placeholder.
+
+`photocraft-ui-egui` never names Clippy: the app binary installs an extension in its `Services`,
+and without one every frame, menu and Preferences page is PhotoCraft's own.
+
+| File                                  | Hook                                                                          |
+|---------------------------------------|-------------------------------------------------------------------------------|
+| `crates/clippy-ui`                    | New (L6): Clippy's interface, an `Extension` of ui-egui; `mode.rs` the switch |
+| `crates/clippy-stock`                 | New (L4): the sub tool stock on disk (empty until M7)                         |
+| `crates/engine/src/clippy_cmds.rs`    | New: `ClippyPrefs`, commands `clippy.mode.set/clippy/photoshop`               |
+| `crates/engine/src/{lib,commands}.rs` | Module and `v.extend(clippy_cmds::specs())`                                   |
+| `crates/engine/src/prefs.rs`          | Field `Preferences::clippy`; unused keys in `HIDDEN_UNTIL_IMPLEMENTED`        |
+| `crates/ui-egui/src/extension.rs`     | New: `Extension` (frame, menu items, Preferences rows)                        |
+| `crates/ui-egui/src/lib.rs`           | `Services::extension`; `fn ui` calls it or `photocraft_chrome`                |
+| `crates/ui-egui/src/menus.rs`         | `menu_items` adds the extension's items                                       |
+| `crates/ui-egui/src/prefs_ui.rs`      | Working copy with the extension's paths; its rows on Interface                |
+| `xtask/src/layers.rs`                 | Layers of the new crates; `ui-egui` → `clippy-ui` within L6                   |
+| `apps/photocraft`                     | Feature `clippy` depends on `photocraft-clippy-ui`; `install()` in `main.rs`  |
+
+Snapshot of either mode (`--no-extension` renders PhotoCraft itself):
+
+```sh
+cargo run -p photocraft-clippy-ui --example snapshot -- --out ui.png --mode photoshop --lang de
+```
+
 ## Trademarks
 
 As `docs/brand/LICENSE-brand.txt` requires of forks, the ArtCraft logo files are removed; only

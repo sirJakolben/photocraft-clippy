@@ -1,0 +1,13 @@
+[package]
+name = "photocraft-clippy-stock"
+description = "Clippy (PhotoCraft Extension): the sub tool stock on disk (folders, metadata, import and export)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+# Empty until M7, which adds photocraft-clippy-sut (the .sut format) and photocraft-io.
+[dependencies]
+
+[lints]
+workspace = true

@@ -26,6 +26,7 @@ mod canvas_geom;
 mod channel_clip;
 pub mod channel_cmds;
 mod clip_group;
+pub mod clippy_cmds;
 pub mod color_cmds;
 pub mod color_to_alpha_cmds;
 pub mod commands;

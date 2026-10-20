@@ -3236,3 +3236,5 @@ curves	Smooth	Glätten
 	About Clippy (PhotoCraft Extension)	Über Clippy (PhotoCraft Extension)
 	Clippy (PhotoCraft Extension) — a Clip Studio Paint–style interface for PhotoCraft.	Clippy (PhotoCraft Extension) — eine Oberfläche im Stil von Clip Studio Paint für PhotoCraft.
 	Based on PhotoCraft by the ArtCraft team. Not affiliated with CELSYS or the ArtCraft team.	Basiert auf PhotoCraft vom ArtCraft-Team. Keine Verbindung zu CELSYS oder dem ArtCraft-Team.
+# Clippy (PhotoCraft Extension): the interface switch (crates/clippy-ui/src/mode.rs)
+	Clippy: the Clip Studio Paint–style interface. Photoshop: PhotoCraft's own interface. Switches without a restart.	Clippy: die Oberfläche im Stil von Clip Studio Paint. Photoshop: die eigene Oberfläche von PhotoCraft. Wechselt ohne Neustart.
