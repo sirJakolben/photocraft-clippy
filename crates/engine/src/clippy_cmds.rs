@@ -15,6 +15,15 @@ pub const MODE_SET: &str = "clippy.mode.set";
 pub const MODE_CLIPPY: &str = "clippy.mode.clippy";
 /// Window › Interface › Photoshop.
 pub const MODE_PHOTOSHOP: &str = "clippy.mode.photoshop";
+/// Store Clippy's dock layout: `{"layout": {...}|null}`.
+pub const LAYOUT_SET: &str = "clippy.layout.set";
+/// Window › Interface › Reset Clippy Workspace: back to the default layout.
+pub const LAYOUT_RESET: &str = "clippy.layout.reset";
+/// The key of Clippy's own layout in [`ClippyPrefs::layouts`] (PhotoCraft's interface keeps its
+/// own `panelLayout`).
+pub const LAYOUT_KEY: &str = "clippy";
+/// Largest layout accepted, as JSON text: a full layout of every palette is a few KiB.
+pub const MAX_LAYOUT_BYTES: usize = 256 * 1024;
 
 /// Which interface Clippy shows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -89,7 +98,57 @@ pub fn specs() -> Vec<CommandSpec> {
             run: |s, _| set_mode(s, ClippyMode::Photoshop),
             journal: false,
         },
+        CommandSpec {
+            id: LAYOUT_SET,
+            label: "Set Clippy Layout",
+            menu: &[],
+            shortcut: None,
+            params: r##"{"layout":{root,floating}|null} → {layout}: the dock layout of the Clippy interface (a craft_ui docking layout of palette ids such as "canvas", "layer", "subTool"; preference clippy.layouts.clippy). null is the default layout. Only its size and kind are checked here; photocraft-clippy shows the default for a layout it can't read"##,
+            enabled: |_| Ok(()),
+            run: layout_set,
+            journal: false,
+        },
+        CommandSpec {
+            id: LAYOUT_RESET,
+            label: "Reset Clippy Workspace",
+            menu: &[],
+            shortcut: None,
+            params: r##"{} → {layout: null}: the default Clippy dock layout"##,
+            enabled: |_| Ok(()),
+            run: |s, _| store_layout(s, Value::Null),
+            journal: false,
+        },
     ]
+}
+
+fn layout_set(s: &mut Session, p: &Value) -> Result<Value> {
+    let bad = |msg: String| EngineError::BadParams { cmd: LAYOUT_SET.into(), msg };
+    let layout = match p.get("layout") {
+        Some(v @ (Value::Object(_) | Value::Null)) => v.clone(),
+        Some(_) => return Err(bad("`layout` must be an object or null".into())),
+        None => return Err(bad("missing `layout` (an object, or null for the default)".into())),
+    };
+    let size = serde_json::to_string(&layout).map(|t| t.len()).unwrap_or(usize::MAX);
+    if size > MAX_LAYOUT_BYTES {
+        return Err(bad(format!("`layout` is {size} bytes of JSON; at most {MAX_LAYOUT_BYTES}")));
+    }
+    store_layout(s, layout)
+}
+
+/// Store the layout under [`LAYOUT_KEY`], keeping other keys; the preferences revision moves
+/// only on a change.
+fn store_layout(s: &mut Session, layout: Value) -> Result<Value> {
+    if s.prefs().clippy.layouts.get(LAYOUT_KEY).unwrap_or(&Value::Null) != &layout {
+        s.edit_prefs(|p| {
+            if !p.clippy.layouts.is_object() {
+                p.clippy.layouts = json!({});
+            }
+            if let Some(map) = p.clippy.layouts.as_object_mut() {
+                map.insert(LAYOUT_KEY.into(), layout.clone());
+            }
+        });
+    }
+    Ok(json!({"layout": layout}))
 }
 
 fn mode_set(s: &mut Session, p: &Value) -> Result<Value> {
@@ -198,6 +257,36 @@ mod tests {
         s.execute("prefs.set", json!({"path": "clippy.mode", "value": null})).unwrap();
         assert_eq!(s.prefs().clippy.mode, None);
         assert_eq!(s.execute("prefs.get", json!({"path": "clippy.mode"})).unwrap(), Value::Null);
+    }
+
+    #[test]
+    fn the_layout_is_stored_and_reset() {
+        let mut s = Session::new();
+        let layout = json!({"root": {"Tabs": {"panels": ["canvas"], "active": 0}}, "floating": []});
+        assert_eq!(s.execute(LAYOUT_SET, json!({"layout": layout})).unwrap(), json!({"layout": layout}));
+        assert_eq!(s.prefs().clippy.layouts, json!({"clippy": layout}));
+        let rev = s.prefs.rev();
+        s.execute(LAYOUT_SET, json!({"layout": layout})).unwrap();
+        assert_eq!(s.prefs.rev(), rev, "the same layout saves nothing");
+        // Other modes' entries stay.
+        s.edit_prefs(|p| p.clippy.layouts["other"] = json!(1));
+        assert_eq!(s.execute(LAYOUT_RESET, json!({})).unwrap(), json!({"layout": null}));
+        assert_eq!(s.prefs().clippy.layouts, json!({"clippy": null, "other": 1}));
+        // A file whose `layouts` isn't an object gets one.
+        s.edit_prefs(|p| p.clippy.layouts = json!([1]));
+        s.execute(LAYOUT_SET, json!({"layout": layout})).unwrap();
+        assert_eq!(s.prefs().clippy.layouts, json!({"clippy": layout}));
+    }
+
+    #[test]
+    fn bad_layouts_are_errors_and_change_nothing() {
+        let mut s = Session::new();
+        let huge = json!({"x": "a".repeat(MAX_LAYOUT_BYTES)});
+        for p in [json!({}), Value::Null, json!([]), json!({"layout": 1}), json!({"layout": "x"}), json!({"layout": []}), json!({"layout": huge})] {
+            let err = s.execute(LAYOUT_SET, p.clone()).unwrap_err();
+            assert!(matches!(err, EngineError::BadParams { .. }), "{p}: {err}");
+            assert_eq!(s.prefs().clippy.layouts, Value::Null, "{p}");
+        }
     }
 
     #[test]

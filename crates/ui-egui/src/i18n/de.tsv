@@ -3237,3 +3237,14 @@ curves	Smooth	Glätten
 	Based on PhotoCraft by the ArtCraft team. Not affiliated with CELSYS or the ArtCraft team.	Basiert auf PhotoCraft vom ArtCraft-Team. Keine Verbindung zu CELSYS oder dem ArtCraft-Team.
 # photocraft-clippy: the interface switch (crates/clippy-ui/src/mode.rs)
 	Clippy: the Clip Studio Paint–style interface. Photoshop: PhotoCraft's own interface. Switches without a restart.	Clippy: die Oberfläche im Stil von Clip Studio Paint. Photoshop: die eigene Oberfläche von PhotoCraft. Wechselt ohne Neustart.
+# photocraft-clippy: the docks (crates/clippy-ui/src/dock)
+	Sub Tool	Sub-Tool
+	Tool Property	Werkzeugeigenschaft
+	Command Bar	Befehlsleiste
+	Color Wheel	Farbkreis
+	Intermediate Color	Zwischenfarbe
+	Color History	Farbprotokoll
+	Color Mixing	Farbmischung
+	This palette comes in a later version of photocraft-clippy.	Diese Palette kommt in einer späteren Version von photocraft-clippy.
+	Reset Clippy Workspace	Clippy-Arbeitsbereich zurücksetzen
+	The saved Clippy layout could not be read; the default layout is shown.	Das gespeicherte Clippy-Layout war nicht lesbar; das Standard-Layout wird gezeigt.

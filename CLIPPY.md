@@ -24,12 +24,12 @@ picks the identity.
 
 Clippy and an installed PhotoCraft run side by side for one user without sharing state:
 
-| What                     | PhotoCraft                       | Clippy                                    |
+| What                     | PhotoCraft                       | photocraft-clippy                         |
 |--------------------------|----------------------------------|-------------------------------------------|
 | Binary                   | `photocraft`                     | `photocraft-clippy`                       |
 | App id, window class     | `ai.storyteller.photocraft`      | `io.github.sirjakolben.PhotocraftClippy`  |
 | Settings folder (Linux)  | `~/.config/photocraft`           | `~/.config/photocraft-clippy`             |
-| Window title, About      | PhotoCraft                       | photocraft-clippy             |
+| Window title, About      | PhotoCraft                       | photocraft-clippy                         |
 | Icon                     | `assets/app-icon/`               | `assets/app-icon-clippy/`                 |
 | Desktop entry            | `packaging/linux/ai.storyteller.photocraft.desktop` | `packaging/linux/io.github.sirjakolben.PhotocraftClippy.desktop` |
 
@@ -80,6 +80,29 @@ Snapshot of either mode (`--no-extension` renders PhotoCraft itself):
 ```sh
 cargo run -p photocraft-clippy-ui --example snapshot -- --out ui.png --mode photoshop --lang de
 ```
+
+## Docks
+
+In Clippy mode the window below the menu and option bars is one `craft_ui::docking` layout: the
+canvas, protected, in the middle and a dock on any side of it. A dock is a column (left, right)
+or a row (top, bottom) of tab groups; groups inside it only stack along it, and each side of the
+canvas has one dock at most. Palettes move by dragging their tab, float as windows inside the
+main window, and their sizes drag at the dividers.
+
+The layout is the preference `clippy.layouts.clippy`, written only by `clippy.layout.set
+{"layout": …}` and `clippy.layout.reset` (Window › Interface › Reset Clippy Workspace); null is
+the default from `crates/clippy-ui/assets/default-layout.json`. An unreadable saved layout shows
+the default with a note in the status bar. Palette ids, titles, icons and bodies are in
+`crates/clippy-ui/src/dock/panels.rs`; PhotoCraft's panels draw through
+`extension::photocraft_panel`. Until Clippy's own palettes exist, the Tool palette shows
+PhotoCraft's tool column and the other new palettes (Sub Tool, Tool Property, colour palettes)
+show a note.
+
+| File                                  | Hook                                                                  |
+|---------------------------------------|-----------------------------------------------------------------------|
+| `crates/ui-egui/src/extension.rs`     | `photocraft_panel`: a PhotoCraft dock panel's body in another dock    |
+| `crates/engine/src/clippy_cmds.rs`    | `clippy.layout.set`, `clippy.layout.reset`                            |
+| `crates/engine/src/prefs.rs`          | `clippy.layouts` no longer hidden                                     |
 
 ## Brush engine additions
 

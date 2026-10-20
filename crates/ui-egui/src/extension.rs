@@ -7,6 +7,7 @@
 use serde_json::Value;
 
 use crate::PhotocraftApp;
+use crate::dock::Group;
 use crate::menus::MenuItem;
 
 /// What an extension adds. Plain function pointers: the state lives in the session (preferences)
@@ -47,4 +48,26 @@ pub(crate) fn add_pref_values(extension: Option<Extension>, prefs: &photocraft_e
             map.insert(key.to_string(), value);
         }
     }
+}
+
+/// The body of PhotoCraft's dock panel `label` in `group` ("Layers" in [`Group::Layers`], …), for
+/// an extension's own docks: scrolled as in PhotoCraft's dock. PhotoCraft's remembered tab of the
+/// group is left as it was, so its own dock looks the same after a switch back. False (nothing
+/// drawn) for a label the group doesn't have.
+pub fn photocraft_panel(app: &mut PhotocraftApp, ui: &mut egui::Ui, group: Group, label: &str) -> bool {
+    let pro = crate::theme::Tokens::get(ui.ctx()).pro;
+    let Some(tab) = group.tabs(pro).iter().position(|name| *name == label) else { return false };
+    let remembered = app.ui.dock_tabs;
+    *group.tab_mut(&mut app.ui.dock_tabs) = tab;
+    if group.scrolls_itself(tab) {
+        crate::panels::dock_body(app, ui, group, tab);
+    } else {
+        crate::panels::offer_color_field_fill(ui, pro, group, tab);
+        egui::ScrollArea::vertical()
+            .id_salt(("extension-panel-body", label))
+            .auto_shrink([false, false])
+            .show(ui, |ui| crate::panels::dock_body(app, ui, group, tab));
+    }
+    app.ui.dock_tabs = remembered;
+    true
 }
