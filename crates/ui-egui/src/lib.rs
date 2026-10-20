@@ -577,6 +577,9 @@ pub struct PhotocraftApp {
     pub session: Session,
     pub ui: UiState,
     pub services: Services,
+    /// State of the installed extension ([`extension::Extension`]), which this crate never
+    /// looks into; read it with [`PhotocraftApp::extension_data`].
+    extension_data: Option<Box<dyn std::any::Any + Send>>,
     /// Canvas caches per (document, display): CPU textures hold monitor values; the GPU
     /// canvas state is shared (`canvas::GPU_OUTPUT`).
     canvases: HashMap<(DocId, u32), canvas::CanvasCache>,
@@ -871,6 +874,7 @@ impl PhotocraftApp {
             services,
             canvases: HashMap::new(),
             navigator_textures: HashMap::new(),
+            extension_data: None,
             display_memo: HashMap::new(),
             navigator_gpu: HashMap::new(),
             navigator_plain: std::collections::HashSet::new(),
@@ -1105,6 +1109,11 @@ impl PhotocraftApp {
             && let Some(authorize) = self.services.automation_command.as_ref()
         {
             authorize(id, &params)?;
+        }
+        if let Some(command) = self.services.extension.map(|e| e.command)
+            && let Some(result) = command(self, id, &params)
+        {
+            return result;
         }
         // A new layer while Free Transform is open applies the transform first, as Photoshop does
         // (#5667): History reads the transform (or Place Embedded), then New Layer. Only for a
@@ -2127,6 +2136,9 @@ impl eframe::App for PhotocraftApp {
         last_brush::persist(self, &ctx);
         // Tool options are remembered between launches the same way (#2814).
         tool_memory::persist(self, &ctx);
+        if let Some(frame) = self.services.extension.map(|e| e.frame) {
+            frame(self, &ctx);
+        }
         // So are View › Extras, Show and Snap To (#3762).
         view_cmds::persist(self, &ctx);
         self.automation_input = false;

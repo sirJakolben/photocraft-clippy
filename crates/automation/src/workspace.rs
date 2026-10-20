@@ -391,6 +391,8 @@ fn command_uses_ambient_path(id: &str, params: &Value) -> bool {
             params.get("path").is_some() || ["importKys", "exportKys", "summarize"].iter().any(|k| params.get(*k).and_then(|v| v.get("path")).is_some())
         }
         "plugin.reload" => true,
+        // photocraft-clippy: sub tool files read or written by path (CLIPPY.md).
+        "clippy.subtool.select" | "clippy.subtool.export" => params.get("path").is_some(),
         _ => false,
     }
 }

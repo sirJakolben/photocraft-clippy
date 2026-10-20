@@ -29,6 +29,16 @@ pub struct Extension {
     /// copy (section → key → value, as PhotoCraft's sections); `search` is the lowercased
     /// filter, empty for every row.
     pub interface_prefs: fn(&mut egui::Ui, &mut Value, &str),
+    /// Carries out a command the extension owns (`clippy.*`): `Some(result)` when it handled
+    /// `id`, `None` to leave it to PhotoCraft. Asked first for every command
+    /// [`PhotocraftApp::run`] runs, in either interface, so the menu, shortcuts, the control
+    /// channel and MCP reach it alike.
+    pub command: fn(&mut PhotocraftApp, &str, &Value) -> Option<Result<Value, String>>,
+    /// Runs once per frame after the panels, in either interface (beside the tool memory).
+    pub frame: fn(&mut PhotocraftApp, &egui::Context),
+    /// Hide PhotoCraft's brush presets (the Brush Preset picker's list) while the extension
+    /// draws: its own tools bring their brushes.
+    pub hides_brush_presets: bool,
 }
 
 impl PhotocraftApp {
@@ -36,6 +46,24 @@ impl PhotocraftApp {
     pub(crate) fn active_extension(&self) -> Option<Extension> {
         self.services.extension.filter(|e| (e.active)(self))
     }
+
+    /// The extension's own state of type `T` ([`PhotocraftApp::extension_data`]), made with
+    /// `T::default()` the first time (or when another type is stored).
+    pub fn extension_data<T: Default + Send + 'static>(&mut self) -> &mut T {
+        if !self.extension_data.as_ref().is_some_and(|d| d.is::<T>()) {
+            self.extension_data = Some(Box::new(T::default()));
+        }
+        #[allow(clippy::expect_used)]
+        self.extension_data.as_mut().and_then(|d| d.downcast_mut::<T>()).expect("the slot holds a T: checked or filled just above")
+    }
+}
+
+/// Select `tool` as the user's explicit choice (as the tool column does), switching its own brush
+/// in at once (each tool keeps one), so the caller can set the brush right after.
+pub fn select_tool(app: &mut PhotocraftApp, tool: crate::state::Tool) {
+    crate::tool_memory::select(app, tool);
+    app.ui.remember_group_tool();
+    crate::paint_mouse::sync_tool_brush(app);
 }
 
 /// Add the values of `extension`'s preference paths to a Preferences working copy.
