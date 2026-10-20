@@ -44,7 +44,9 @@ impl Tip {
     /// (black paints fully, white not at all). Mask-only tips give their alpha.
     pub fn coverage(&self) -> Vec<u8> {
         self.rgba
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .map(|p| {
                 let lum = (u32::from(p[0]) * 299 + u32::from(p[1]) * 587 + u32::from(p[2]) * 114) / 1000;
                 ((255 - lum) * u32::from(p[3]) / 255) as u8

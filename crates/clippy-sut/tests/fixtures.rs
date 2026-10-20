@@ -162,7 +162,7 @@ fn every_brush_tip_decodes() {
     let mut formats = BTreeMap::new();
     for t in &tips {
         assert_eq!(t.rgba.len(), t.width as usize * t.height as usize * 4);
-        assert!(t.rgba.chunks_exact(4).any(|p| p[3] != 0), "a tip is fully transparent");
+        assert!(t.rgba.as_chunks::<4>().0.iter().any(|p| p[3] != 0), "a tip is fully transparent");
         *formats.entry(format!("{:?}", t.format)).or_insert(0) += 1;
     }
     eprintln!("{} tips: {formats:?}", tips.len());

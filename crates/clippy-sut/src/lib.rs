@@ -35,11 +35,11 @@ mod value;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use archive::{ArchiveEntry, MaterialArchive};
+pub use blobs::{MaterialRef, MaterialRefs, ShowParams};
 #[cfg(not(target_arch = "wasm32"))]
 pub use db::write_atomic;
-pub use blobs::{MaterialRef, MaterialRefs, ShowParams};
 pub use effector::{Curve, Effector, Source, Sources};
-pub use model::{DbInfo, Group, Material, SchemaObject, Sut, SubTool, Todb, Tool, ToolTree, Variant, is_null_uuid};
+pub use model::{DbInfo, Group, Material, SchemaObject, SubTool, Sut, Todb, Tool, ToolTree, Variant, is_null_uuid};
 pub use value::{Cell, Row, Value};
 
 /// Why a file could not be read or written. Messages are short reasons; callers add advice.

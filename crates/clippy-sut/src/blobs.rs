@@ -143,10 +143,10 @@ impl MaterialRefs {
 /// Strict UTF-16 LE: an odd length or an unpaired surrogate is an error, so a decoded path always
 /// encodes back to the same bytes. The raw blob stays in the variant row either way.
 fn utf16le(bytes: &[u8]) -> Result<String> {
-    if bytes.len() % 2 != 0 {
+    if !bytes.len().is_multiple_of(2) {
         return malformed(REFS_WHAT, "odd UTF-16 byte length");
     }
-    let units: Vec<u16> = bytes.chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
+    let units: Vec<u16> = bytes.as_chunks::<2>().0.iter().map(|c| u16::from_le_bytes(*c)).collect();
     String::from_utf16(&units).or_else(|_| malformed(REFS_WHAT, "invalid UTF-16"))
 }
 

@@ -33,7 +33,7 @@ pub(crate) struct Pages<'a> {
 impl<'a> Pages<'a> {
     /// The image read with `page_size`; `None` if the image is not a whole number of pages.
     pub fn new(image: &'a DbImage, page_size: usize, max_payload: usize) -> Option<Self> {
-        if !(512..=65_536).contains(&page_size) || !page_size.is_power_of_two() || image.len % page_size != 0 {
+        if !(512..=65_536).contains(&page_size) || !page_size.is_power_of_two() || !image.len.is_multiple_of(page_size) {
             return None;
         }
         // The reserved-bytes count lives in the database header, which is usually encrypted;

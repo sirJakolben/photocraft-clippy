@@ -27,7 +27,7 @@ pub fn encode(tip: &Tip) -> Result<Vec<u8>> {
     if w == 0 || h == 0 || tip.rgba.len() as u64 != u64::from(w) * u64::from(h) * 4 {
         return malformed("tip", "size does not match the pixels");
     }
-    let gray = tip.rgba.chunks_exact(4).all(|p| p[0] == p[1] && p[1] == p[2]);
+    let gray = tip.rgba.as_chunks::<4>().0.iter().all(|p| p[0] == p[1] && p[1] == p[2]);
     let format = if gray { TipFormat::GrayAlpha8 } else { TipFormat::Rgba8 };
     let (gw, gh) = (w.div_ceil(TILE), h.div_ceil(TILE));
     let channels: u8 = if gray { 2 } else { 5 };
@@ -78,10 +78,7 @@ pub fn encode(tip: &Tip) -> Result<Vec<u8>> {
     let conn = Connection::open_in_memory()?;
     conn.execute_batch("PRAGMA page_size = 4096;")?;
     conn.execute_batch(SCHEMA)?;
-    conn.execute(
-        "INSERT INTO Canvas VALUES (1, 1, 0, ?1, ?2, 72.0, 1, 0, 2, 3)",
-        params![f64::from(w), f64::from(h)],
-    )?;
+    conn.execute("INSERT INTO Canvas VALUES (1, 1, 0, ?1, ?2, 72.0, 1, 0, 2, 3)", params![f64::from(w), f64::from(h)])?;
     conn.execute_batch(
         "INSERT INTO Layer VALUES (1, 2, 0, '', 256, 256, 1, 1, 0, 3, 0);
          INSERT INTO Layer VALUES (2, 3, 0, '', 0, 256, 0, 1, 0, 0, 4);

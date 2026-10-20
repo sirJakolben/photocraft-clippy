@@ -166,15 +166,11 @@ impl Row {
     /// Whether both rows hold the same columns with the same values (order and declared types
     /// ignored; NaN equals NaN).
     pub fn same_values(&self, other: &Row) -> bool {
-        self.cells.len() == other.cells.len()
-            && self.cells.iter().all(|c| other.get(&c.name).is_some_and(|v| v.same(&c.value)))
+        self.cells.len() == other.cells.len() && self.cells.iter().all(|c| other.get(&c.name).is_some_and(|v| v.same(&c.value)))
     }
 
     fn position(&self, name: &str) -> Option<usize> {
-        self.cells
-            .iter()
-            .position(|c| c.name == name)
-            .or_else(|| self.cells.iter().position(|c| c.name.eq_ignore_ascii_case(name)))
+        self.cells.iter().position(|c| c.name == name).or_else(|| self.cells.iter().position(|c| c.name.eq_ignore_ascii_case(name)))
     }
 }
 

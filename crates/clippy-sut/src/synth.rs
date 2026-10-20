@@ -181,7 +181,8 @@ pub fn subtool(seed: u64, materials: usize) -> Result<SubTool> {
     let mut mats = Vec::new();
     let mut refs = MaterialRefs::default();
     for i in 0..materials {
-        let uuid = format!("{:010x}-{:04x}-{:04x}-{:04x}-{:010x}", rng.next() & 0xff_ffff_ffff, i, rng.below(0xffff), rng.below(0xffff), rng.next() & 0xff_ffff_ffff);
+        let uuid =
+            format!("{:010x}-{:04x}-{:04x}-{:04x}-{:010x}", rng.next() & 0xff_ffff_ffff, i, rng.below(0xffff), rng.below(0xffff), rng.next() & 0xff_ffff_ffff);
         let catalog = format!(".:45:36:{uuid}");
         let layer = crate::layer::encode(&tip(24 + 8 * i as u32, seed + i as u64))?;
         let archive = MaterialArchive {

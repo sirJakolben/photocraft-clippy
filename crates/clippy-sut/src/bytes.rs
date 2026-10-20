@@ -45,10 +45,6 @@ impl<'a> Reader<'a> {
         Ok(out)
     }
 
-    pub(crate) fn u16_be(&mut self) -> Result<u16> {
-        Ok(u16::from_be_bytes(self.array()?))
-    }
-
     pub(crate) fn u32_be(&mut self) -> Result<u32> {
         Ok(u32::from_be_bytes(self.array()?))
     }
@@ -75,7 +71,7 @@ impl<'a> Reader<'a> {
     pub(crate) fn label(&mut self) -> Result<String> {
         let chars = self.len_be()?;
         let bytes = self.take(chars.checked_mul(2).ok_or_else(|| self.error("label length overflows"))?)?;
-        let units: Vec<u16> = bytes.chunks_exact(2).map(|c| u16::from_be_bytes([c[0], c[1]])).collect();
+        let units: Vec<u16> = bytes.as_chunks::<2>().0.iter().map(|c| u16::from_be_bytes(*c)).collect();
         Ok(String::from_utf16_lossy(&units))
     }
 

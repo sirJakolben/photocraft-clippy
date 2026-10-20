@@ -13,7 +13,13 @@ fn generated_suts_round_trip_with_materials() {
         let back = Sut::from_bytes(&bytes, &Limits::default()).unwrap();
         assert_eq!(back.subtool, sut.subtool);
         assert!(back.info.manager.same_values(&sut.info.manager));
-        assert_eq!(back.info.sequence, vec![("Manager".into(), 1), ("Node".into(), 1), ("Variant".into(), 2), ("MaterialFile".into(), materials as i64)].into_iter().filter(|(_, n)| *n > 0).collect::<Vec<_>>());
+        assert_eq!(
+            back.info.sequence,
+            vec![("Manager".into(), 1), ("Node".into(), 1), ("Variant".into(), 2), ("MaterialFile".into(), materials as i64)]
+                .into_iter()
+                .filter(|(_, n)| *n > 0)
+                .collect::<Vec<_>>()
+        );
         assert_eq!(back.to_bytes().unwrap(), bytes);
         let v = back.subtool.variant.as_ref().unwrap();
         assert!(v.effector(known::BRUSH_SIZE_EFFECTOR).unwrap().is_ok());
@@ -67,10 +73,10 @@ fn generated_tool_databases_build_their_tree() {
 fn broken_trees_are_errors() {
     // Node order: 0 root, 1 tool, 2 group, 3 and 4 sub tools.
     for links in [
-        vec![(4, "NodeNextUuid", Some(3))],      // sibling cycle
-        vec![(3, "NodeFirstChildUuid", Some(1))], // child points back up
+        vec![(4, "NodeNextUuid", Some(3))],        // sibling cycle
+        vec![(3, "NodeFirstChildUuid", Some(1))],  // child points back up
         vec![(2, "NodeFirstChildUuid", Some(99))], // dangling link
-        vec![(3, "NodeFirstChildUuid", Some(4))], // a fourth level
+        vec![(3, "NodeFirstChildUuid", Some(4))],  // a fourth level
     ] {
         let bytes = synth::todb(&[&[2]], &links).unwrap();
         assert!(Todb::from_bytes(&bytes, &Limits::default()).is_err(), "{links:?}");

@@ -101,10 +101,12 @@ fn open_bytes(bytes: &[u8]) -> Result<Connection> {
         1 => 65_536,
         v => usize::from(v),
     });
-    if let (Some(pages), Some(counter), Some(valid_for)) = (be(28), be(24), be(92)) {
-        if counter == valid_for && pages != 0 && (pages as usize).checked_mul(page_size) != Some(bytes.len()) {
-            return malformed("tool database", format!("{} bytes, the header says {pages} pages of {page_size}", bytes.len()));
-        }
+    if let (Some(pages), Some(counter), Some(valid_for)) = (be(28), be(24), be(92))
+        && counter == valid_for
+        && pages != 0
+        && (pages as usize).checked_mul(page_size) != Some(bytes.len())
+    {
+        return malformed("tool database", format!("{} bytes, the header says {pages} pages of {page_size}", bytes.len()));
     }
     let mut conn = Connection::open_in_memory_with_flags(OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX)?;
     conn.deserialize_read_exact("main", bytes, bytes.len(), true)?;
@@ -240,10 +242,10 @@ fn write_sut(sut: &Sut) -> Result<Vec<u8>> {
     node.set(col::FIRST_CHILD, Value::Blob(NULL_UUID.to_vec()));
     insert(&conn, info, NODE, 1, &node)?;
     let mut variants: Vec<&Variant> = sut.subtool.variant.iter().collect();
-    if let Some(init) = &sut.subtool.init_variant {
-        if variants.iter().all(|v| v.id() != init.id()) {
-            variants.push(init);
-        }
+    if let Some(init) = &sut.subtool.init_variant
+        && variants.iter().all(|v| v.id() != init.id())
+    {
+        variants.push(init);
     }
     for (i, v) in variants.iter().enumerate() {
         insert(&conn, info, VARIANT, i as i64 + 1, &v.row)?;

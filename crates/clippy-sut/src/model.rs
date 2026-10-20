@@ -166,11 +166,7 @@ impl Variant {
     /// Every material this variant references, from all material list columns; undecodable lists
     /// are skipped (their bytes stay in the row).
     pub fn all_material_refs(&self) -> Vec<crate::MaterialRef> {
-        known::MATERIAL_COLUMNS
-            .iter()
-            .filter_map(|c| self.material_refs(c).and_then(Result::ok))
-            .flat_map(|r| r.entries)
-            .collect()
+        known::MATERIAL_COLUMNS.iter().filter_map(|c| self.material_refs(c).and_then(Result::ok)).flat_map(|r| r.entries).collect()
     }
 }
 
@@ -373,10 +369,7 @@ impl Sut {
                 table: known::MATERIAL_TABLE.into(),
                 sql: Some(known::MATERIAL_FILE_SQL.into()),
             });
-            info.columns.push((
-                known::MATERIAL_TABLE.into(),
-                known::MATERIAL_FILE_COLUMNS.iter().map(|(n, t)| ((*n).to_owned(), (*t).to_owned())).collect(),
-            ));
+            info.columns.push((known::MATERIAL_TABLE.into(), known::MATERIAL_FILE_COLUMNS.iter().map(|(n, t)| ((*n).to_owned(), (*t).to_owned())).collect()));
         }
         Self { info, subtool }
     }
@@ -474,12 +467,7 @@ fn lookup<'a>(index: &HashMap<&[u8], usize>, nodes: &'a [Row], uuid: Option<&Val
 
 /// The children of `parent`: its first child, then that child's `NodeNextUuid` chain. `seen` holds
 /// every node already placed, so a cycle ends with an error instead of looping.
-fn children<'a>(
-    index: &HashMap<&[u8], usize>,
-    nodes: &'a [Row],
-    parent: &Row,
-    seen: &mut HashSet<usize>,
-) -> Result<Vec<&'a Row>> {
+fn children<'a>(index: &HashMap<&[u8], usize>, nodes: &'a [Row], parent: &Row, seen: &mut HashSet<usize>) -> Result<Vec<&'a Row>> {
     let mut out = Vec::new();
     let mut link = parent.get(col::FIRST_CHILD);
     while !is_null_uuid(link) {
@@ -494,9 +482,7 @@ fn children<'a>(
 }
 
 fn subtool(node: &Row, variants: &HashMap<i64, &Row>, materials: Vec<Material>) -> SubTool {
-    let variant_of = |column: &str| {
-        node.int(column).filter(|&id| id != 0).and_then(|id| variants.get(&id)).map(|row| Variant { row: (*row).clone() })
-    };
+    let variant_of = |column: &str| node.int(column).filter(|&id| id != 0).and_then(|id| variants.get(&id)).map(|row| Variant { row: (*row).clone() });
     SubTool { node: node.clone(), variant: variant_of(col::VARIANT), init_variant: variant_of(col::INIT_VARIANT), materials }
 }
 
@@ -517,14 +503,7 @@ mod tests {
     fn raw(nodes: Vec<Row>) -> RawDb {
         let mut manager = Row::new();
         manager.set(col::ROOT, Value::Blob(vec![1; 16]));
-        let info = DbInfo {
-            page_size: 1024,
-            encoding: "UTF-8".into(),
-            objects: Vec::new(),
-            columns: Vec::new(),
-            manager,
-            sequence: Vec::new(),
-        };
+        let info = DbInfo { page_size: 1024, encoding: "UTF-8".into(), objects: Vec::new(), columns: Vec::new(), manager, sequence: Vec::new() };
         RawDb { info, nodes, variants: Vec::new(), materials: Vec::new() }
     }
 

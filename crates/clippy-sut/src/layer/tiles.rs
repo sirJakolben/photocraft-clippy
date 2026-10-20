@@ -46,7 +46,7 @@ impl Attributes {
         let mut p = Reader::new(r.take(param)?, ATTR);
         p.expect_label("Parameter")?;
         let (width, height, grid_width, grid_height) = (p.u32_be()?, p.u32_be()?, p.u32_be()?, p.u32_be()?);
-        if p.remaining() % 4 != 0 || p.remaining() / 4 < 12 || p.remaining() / 4 > 64 {
+        if !p.remaining().is_multiple_of(4) || p.remaining() / 4 < 12 || p.remaining() / 4 > 64 {
             return malformed(ATTR, format!("{} packing bytes", p.remaining()));
         }
         let packing = (0..p.remaining() / 4).map(|_| p.u32_be()).collect::<Result<Vec<_>>>()?;
@@ -297,7 +297,7 @@ pub(crate) fn to_rgba(a: &Attributes, data: &BlockData, limits: &Limits) -> Resu
     check_limit("tile size", expected as u64, limits.max_entry_bytes)?;
     let fill = if a.fill == 0 { 0 } else { 255 };
     let mut rgba = vec![0u8; w * h * 4];
-    for px in rgba.chunks_exact_mut(4) {
+    for px in rgba.as_chunks_mut::<4>().0 {
         px.copy_from_slice(&match format {
             TipFormat::Alpha8 | TipFormat::Alpha1 => [0, 0, 0, fill],
             _ => [fill, fill, fill, fill],
@@ -310,10 +310,10 @@ pub(crate) fn to_rgba(a: &Attributes, data: &BlockData, limits: &Limits) -> Resu
             return malformed(BLOCKS, format!("tile index {}", block.index));
         }
         tile.clear();
-        ZlibDecoder::new(z.as_slice()).take(expected as u64 + 1).read_to_end(&mut tile).map_err(|e| crate::Error::Malformed {
-            what: BLOCKS,
-            reason: format!("tile {}: {e}", block.index),
-        })?;
+        ZlibDecoder::new(z.as_slice())
+            .take(expected as u64 + 1)
+            .read_to_end(&mut tile)
+            .map_err(|e| crate::Error::Malformed { what: BLOCKS, reason: format!("tile {}: {e}", block.index) })?;
         if tile.len() != expected {
             return malformed(BLOCKS, format!("tile {} has {} bytes, expected {expected}", block.index, tile.len()));
         }
