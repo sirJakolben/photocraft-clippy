@@ -23,7 +23,7 @@ use photocraft_ui_egui::{PhotocraftApp, Services, panels};
 
 /// Clippy's interface as an extension of PhotoCraft's.
 pub fn extension() -> Extension {
-    Extension { active: mode::active, ui: draw, menu_items, pref_paths: &[mode::PREF_PATH], interface_prefs: mode::interface_prefs }
+    Extension { active: mode::active, ui: draw, menu_items, pref_paths: &[mode::PREF_PATH], interface_prefs: mode::interface_prefs, invoke }
 }
 
 /// Install Clippy in the app's services, before the app is created.
@@ -53,8 +53,23 @@ fn draw(app: &mut PhotocraftApp, ui: &mut egui::Ui, chrome: bool) {
     egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.chrome)).show(ui, |ui| dock::show(app, ui));
 }
 
-/// Clippy's menu items: the interface switch and the workspace reset, in Window › Interface.
+/// Clippy's menu items: in Clippy mode its workspaces in Window › Workspace and its palettes in
+/// Window; always the interface switch and the workspace reset, in Window › Interface.
 fn menu_items(app: &PhotocraftApp, items: &mut Vec<photocraft_ui_egui::menus::MenuItem>) {
+    dock::workspace::menu_items(app, items);
     mode::menu_items(app, items);
     dock::menu_items(app, items);
+}
+
+/// Clippy's own menu ids, in Clippy mode: a palette in Window, a workspace and the workspace
+/// dialogs in Window › Workspace.
+fn invoke(app: &mut PhotocraftApp, ctx: &egui::Context, id: &str, params: &serde_json::Value) -> Option<Result<serde_json::Value, String>> {
+    if !mode::active(app) {
+        return None;
+    }
+    if let Some(panel) = id.strip_prefix(dock::PALETTE_PREFIX) {
+        let panel = serde_json::from_value::<dock::panels::PanelId>(serde_json::Value::String(panel.into()));
+        return Some(panel.map_err(|_| format!("no palette `{id}`")).and_then(|p| dock::toggle_palette(app, ctx, p)));
+    }
+    dock::workspace::invoke(app, ctx, id, params)
 }

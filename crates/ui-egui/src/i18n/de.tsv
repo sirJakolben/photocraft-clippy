@@ -3248,3 +3248,11 @@ curves	Smooth	Glätten
 	This palette comes in a later version of photocraft-clippy.	Diese Palette kommt in einer späteren Version von photocraft-clippy.
 	Reset Clippy Workspace	Clippy-Arbeitsbereich zurücksetzen
 	The saved Clippy layout could not be read; the default layout is shown.	Das gespeicherte Clippy-Layout war nicht lesbar; das Standard-Layout wird gezeigt.
+# photocraft-clippy: dock extras, rails and workspaces (crates/clippy-ui/src/dock)
+	Palette Menu	Palettenmenü
+	Close Palette	Palette schließen
+	Float Palette	Palette lösen
+	Collapse Area	Bereich einklappen
+	Expand Area	Bereich ausklappen
+	The workspace is locked.	Der Arbeitsbereich ist gesperrt.
+	A workspace with this name exists.	Ein Arbeitsbereich mit diesem Namen existiert bereits.

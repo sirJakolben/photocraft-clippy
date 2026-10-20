@@ -68,9 +68,9 @@ and without one every frame, menu and Preferences page is PhotoCraft's own.
 | `crates/engine/src/clippy_cmds.rs`    | New: `ClippyPrefs`, commands `clippy.mode.set/clippy/photoshop`               |
 | `crates/engine/src/{lib,commands}.rs` | Module and `v.extend(clippy_cmds::specs())`                                   |
 | `crates/engine/src/prefs.rs`          | Field `Preferences::clippy`; unused keys in `HIDDEN_UNTIL_IMPLEMENTED`        |
-| `crates/ui-egui/src/extension.rs`     | New: `Extension` (frame, menu items, Preferences rows)                        |
+| `crates/ui-egui/src/extension.rs`     | New: `Extension` (frame, menu items, Preferences rows, own menu ids)          |
 | `crates/ui-egui/src/lib.rs`           | `Services::extension`; `fn ui` calls it or `photocraft_chrome`                |
-| `crates/ui-egui/src/menus.rs`         | `menu_items` adds the extension's items                                       |
+| `crates/ui-egui/src/menus.rs`         | `menu_items` adds the extension's items; `invoke` runs its ids                |
 | `crates/ui-egui/src/prefs_ui.rs`      | Working copy with the extension's paths; its rows on Interface                |
 | `xtask/src/layers.rs`                 | Layers of the new crates; `ui-egui` → `clippy-ui` within L6                   |
 | `apps/photocraft`                     | Feature `clippy` depends on `photocraft-clippy-ui`; `install()` in `main.rs`  |
@@ -90,19 +90,59 @@ canvas has one dock at most. Palettes move by dragging their tab, float as windo
 main window, and their sizes drag at the dividers.
 
 The layout is the preference `clippy.layouts.clippy`, written only by `clippy.layout.set
-{"layout": …}` and `clippy.layout.reset` (Window › Interface › Reset Clippy Workspace); null is
-the default from `crates/clippy-ui/assets/default-layout.json`. An unreadable saved layout shows
-the default with a note in the status bar. Palette ids, titles, icons and bodies are in
-`crates/clippy-ui/src/dock/panels.rs`; PhotoCraft's panels draw through
+{"layout": …}`, `clippy.layout.reset` (Window › Interface › Reset Clippy Workspace) and
+`clippy.workspace.load`; null is the default from `crates/clippy-ui/assets/default-layout.json`.
+An unreadable saved layout shows the default with a note in the status bar. Palette ids, titles,
+icons and bodies are in `crates/clippy-ui/src/dock/panels.rs`; PhotoCraft's panels draw through
 `extension::photocraft_panel`. Until Clippy's own palettes exist, the Tool palette shows
 PhotoCraft's tool column and the other new palettes (Sub Tool, Tool Property, colour palettes)
 show a note.
 
+Around craft_ui's dock area (M3, `crates/clippy-ui/src/dock`):
+
+- Tabs (`header.rs`): an inactive tab is its palette's icon, the active one icon and name; every
+  tab has its name as tooltip and accessibility label. craft_ui draws the tab text with room left
+  for the icon, which `header::decorate` paints over the tab afterwards on the tab's own layer.
+- ☰ palette menu at the left of every group's header (inside its first tab): Close Palette,
+  Collapse Area, Float Palette, Reset Clippy Workspace. A tab's context menu gains Collapse Area.
+- Icon rail (`rail.rs`): the chevrons at the right of a dock's first header, Collapse Area or a
+  double click on a tab strip collapse the whole dock to a 36 pt rail of icons along the window
+  edge. An icon opens its palette as an overlay beside the rail (closed by Esc, a click elsewhere
+  or the icon); the rail's first button expands the dock. The saved layout lists collapsed sides
+  under `collapsed` (`["Left"]`) beside craft_ui's `root` and `floating`, so builds before M3 read
+  past it. The frame draws a view without the collapsed docks and maps its split paths back.
+- Drag rules (G10): where a drop would break the dock rules, the pointer is a blocked rect for
+  craft_ui, so no drop preview shows and the release drops nothing (`dock::drop_refused`). Esc
+  cancels a drag (craft_ui). Palettes are at least 160 pt wide (`panels::MIN_WIDTH`).
+- Window: one item per palette (`clippy.palette.<id>`, checked while shown, rail included) in
+  place of PhotoCraft's panel items. Choosing a shown palette closes it; a closed one comes back
+  as a tab beside a palette of its default group, else floating in the middle of the window.
+  Disabled while the workspace is locked.
+- Workspaces (`workspace.rs`): Window › Workspace lists the saved workspaces (a click loads one,
+  menu id `clippy.workspace.load/<name>`), then New Workspace… and Delete Workspace…, which ask
+  for a name, then PhotoCraft's Keyboard Shortcuts… and Lock Workspace. PhotoCraft's workspaces
+  (Essentials, …) arrange its own panels and are left out in Clippy mode. The engine commands
+  `clippy.workspace.save {"name", "overwrite"?}`, `.load {"name"}`, `.delete {"name"}` and
+  `.list` keep one `<name>.json` per workspace (`{"format": "photocraft-clippy-workspace",
+  "version": 1, "name", "layout"}`) in `<settings folder>/workspaces`
+  (`~/.config/photocraft-clippy/workspaces` on Linux); a session without a folder (headless, tests,
+  the web) keeps them in memory. Names are 1–64 characters without `/ \ : * ? " < > |`, control
+  characters or a dot at either end; they match regardless of case. A loaded workspace is the
+  current layout, so it is the one shown after a restart.
+
+Menu ids that aren't engine commands (`clippy.palette.*`, `clippy.workspace.load/*`, and
+`clippy.workspace.save` / `.delete` without a name, which open their dialog) run through
+`Extension::invoke`, only in Clippy mode; everything they change goes through `clippy.layout.set`
+or `clippy.workspace.*`.
+
 | File                                  | Hook                                                                  |
 |---------------------------------------|-----------------------------------------------------------------------|
-| `crates/ui-egui/src/extension.rs`     | `photocraft_panel`: a PhotoCraft dock panel's body in another dock    |
-| `crates/engine/src/clippy_cmds.rs`    | `clippy.layout.set`, `clippy.layout.reset`                            |
+| `crates/ui-egui/src/extension.rs`     | `photocraft_panel`: a PhotoCraft dock panel's body in another dock; `Extension::invoke` |
+| `crates/ui-egui/src/menus.rs`         | `invoke_unguarded` asks `Extension::invoke` first                     |
+| `crates/engine/src/clippy_cmds.rs`    | `clippy.layout.set`, `clippy.layout.reset`, `clippy.workspace.*`, `ClippyState` |
+| `crates/engine/src/lib.rs`            | `Session::clippy` (the workspace folder)                              |
 | `crates/engine/src/prefs.rs`          | `clippy.layouts` no longer hidden                                     |
+| `apps/photocraft/src/main.rs`         | Feature `clippy` sets `session.clippy.workspace_dir`                  |
 
 ## Brush engine additions
 

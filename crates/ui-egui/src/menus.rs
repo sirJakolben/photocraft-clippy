@@ -86,6 +86,12 @@ pub fn invoke(app: &mut PhotocraftApp, ctx: &egui::Context, id: &str, params: Va
 
 /// [`invoke`] without the unsaved-changes prompt, for once the user has already answered it.
 pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id: &str, params: Value) -> Result<Value, String> {
+    // A derived build's own ids (Clippy's palettes and workspaces, `extension`).
+    if let Some(extension) = app.services.extension
+        && let Some(r) = (extension.invoke)(app, ctx, id, &params)
+    {
+        return r;
+    }
     if let Some(tool) = crate::tool_shortcuts::tool(id) {
         crate::tool_memory::select(app, tool);
         return Ok(json!({"tool": tool}));

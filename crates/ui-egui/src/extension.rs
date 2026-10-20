@@ -10,6 +10,10 @@ use crate::PhotocraftApp;
 use crate::dock::Group;
 use crate::menus::MenuItem;
 
+/// [`Extension::invoke`]: the outcome of one of the extension's ids, `None` for an id it doesn't
+/// own.
+pub type InvokeFn = fn(&mut PhotocraftApp, &egui::Context, &str, &Value) -> Option<Result<Value, String>>;
+
 /// What an extension adds. Plain function pointers: the state lives in the session (preferences)
 /// and in [`PhotocraftApp`], so the control channel and agents see it like any other state.
 #[derive(Clone, Copy)]
@@ -29,6 +33,9 @@ pub struct Extension {
     /// copy (section → key → value, as PhotoCraft's sections); `search` is the lowercased
     /// filter, empty for every row.
     pub interface_prefs: fn(&mut egui::Ui, &mut Value, &str),
+    /// Runs one of the extension's own menu ids (one per palette in Window, say) before
+    /// [`crate::menus::invoke`] looks anywhere else; `None` for every id it doesn't own.
+    pub invoke: InvokeFn,
 }
 
 impl PhotocraftApp {
