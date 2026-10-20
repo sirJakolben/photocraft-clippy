@@ -4951,6 +4951,7 @@ dependencies = [
  "flate2",
  "photocraft-affinity",
  "photocraft-algo",
+ "photocraft-clippy-stock",
  "photocraft-cms",
  "photocraft-codecs",
  "photocraft-color",
