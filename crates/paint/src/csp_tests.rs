@@ -178,7 +178,7 @@ fn a_dynamic_without_further_controls_serialises_as_before() {
     let v = serde_json::to_value(Dynamic::controlled(Control::PenPressure)).unwrap();
     assert!(v.get("controls").is_none(), "{v}");
     let d = Dynamic { controls: Controls::new(&[Influence::new(Control::Velocity, 0.3)]), ..Default::default() };
-    let back: Dynamic = serde_json::from_value(serde_json::to_value(d).unwrap()).unwrap();
+    let back: Dynamic = serde_json::from_value(serde_json::to_value(&d).unwrap()).unwrap();
     assert_eq!(back, d);
 }
 
@@ -534,4 +534,12 @@ fn dabs_paint_with_the_tip_they_take() {
     assert!(v.get("tips").is_none() && v.get("tipOrder").is_none());
     let back: BrushSettings = serde_json::from_value(json(&BrushSettings { tip_order: TipOrder::RoundTrip, ..b.clone() })).unwrap();
     assert_eq!((back.tips.len(), back.tip_order), (1, TipOrder::RoundTrip));
+}
+
+#[test]
+fn further_controls_keep_brush_settings_small() {
+    // Each influence carries a response curve; held inline they made every brush four times
+    // larger and overflowed 2 MiB thread stacks in the UI. Upstream's size was 2752 bytes.
+    assert!(std::mem::size_of::<Dynamic>() <= 256, "{}", std::mem::size_of::<Dynamic>());
+    assert!(std::mem::size_of::<BrushSettings>() <= 4 * 1024, "{}", std::mem::size_of::<BrushSettings>());
 }

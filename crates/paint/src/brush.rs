@@ -77,46 +77,41 @@ impl Default for Influence {
     }
 }
 
-/// A [`Dynamic`]'s further controls: up to [`MAX_EXTRA_CONTROLS`], never `Off` ones. Fixed-size, so
-/// a [`Dynamic`] stays `Copy` and a dab evaluates it without allocating. In JSON it is a list of
-/// [`Influence`] objects; extra entries and `off` controls are dropped when it is read.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Controls {
-    n: u8,
-    items: [Influence; MAX_EXTRA_CONTROLS],
-}
+/// A [`Dynamic`]'s further controls: up to [`MAX_EXTRA_CONTROLS`], never `Off` ones. Shared and
+/// behind one pointer, so every brush's dozen dynamics stay as small as before (each influence
+/// carries a whole response curve; inline they made `BrushSettings` four times larger and
+/// overflowed 2 MiB thread stacks in the UI). Cloning only bumps a count, and a dab reads them
+/// without allocating. In JSON it is a list of [`Influence`] objects; extra entries and `off`
+/// controls are dropped when it is read.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Controls(Option<std::sync::Arc<[Influence]>>);
 
 impl Controls {
-    pub const EMPTY: Self = Self { n: 0, items: [Influence::NONE; MAX_EXTRA_CONTROLS] };
+    pub const EMPTY: Self = Self(None);
 
     /// The first [`MAX_EXTRA_CONTROLS`] influences of `list` that have a control.
     pub fn new(list: &[Influence]) -> Self {
-        let mut c = Self::EMPTY;
-        for i in list.iter().filter(|i| i.control != Control::Off) {
-            if !c.push(*i) {
-                break;
-            }
-        }
-        c
+        let kept: Vec<Influence> = list.iter().filter(|i| i.control != Control::Off).take(MAX_EXTRA_CONTROLS).copied().collect();
+        if kept.is_empty() { Self::EMPTY } else { Self(Some(kept.into())) }
     }
 
     /// Add an influence; false (and nothing added) when full or `Off`.
     pub fn push(&mut self, i: Influence) -> bool {
-        let Some(slot) = self.items.get_mut(usize::from(self.n)) else { return false };
-        if i.control == Control::Off {
+        if i.control == Control::Off || self.as_slice().len() >= MAX_EXTRA_CONTROLS {
             return false;
         }
-        *slot = i;
-        self.n += 1;
+        let mut list = self.as_slice().to_vec();
+        list.push(i);
+        *self = Self(Some(list.into()));
         true
     }
 
     pub fn as_slice(&self) -> &[Influence] {
-        self.items.get(..usize::from(self.n)).unwrap_or(&[])
+        self.0.as_deref().unwrap_or(&[])
     }
 
     pub fn is_empty(&self) -> bool {
-        self.n == 0
+        self.as_slice().is_empty()
     }
 }
 
@@ -139,7 +134,7 @@ impl<'de> Deserialize<'de> for Controls {
 }
 
 /// One dynamic parameter: random jitter plus a controller with a floor.
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Dynamic {
     /// 0..1 random variation per dab (for scatter: the amount, may exceed 1).

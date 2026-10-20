@@ -86,7 +86,7 @@ pub fn preview_sig(b: &BrushSettings) -> u64 {
     js(&mut h, &(d.enabled, d.mode, d.size, d.hardness, d.roundness, d.angle, d.spacing, d.scatter, d.both_axes, d.count, d.flip));
     tip_shape_sig(&mut h, &d.tip);
     let t = &b.texture;
-    js(&mut h, &(t.enabled, t.invert, t.scale, t.brightness, t.contrast, t.each_tip, t.mode, t.depth, t.depth_jitter));
+    js(&mut h, &(t.enabled, t.invert, t.scale, t.brightness, t.contrast, t.each_tip, t.mode, t.depth, &t.depth_jitter));
     match &t.pattern {
         Pattern::Tile(g) => tile_sig(&mut h, g),
         Pattern::Stored(r) => stored_sig(&mut h, r),
