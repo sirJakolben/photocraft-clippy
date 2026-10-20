@@ -21,6 +21,12 @@ Lucide icons (assets/icons/*.svg, except slice-knife.svg) — ISC; icons derived
 SCOWL English word list (assets/dict/en_US-scowl-50.txt.gz) — SCOWL license. See assets/dict/LICENSE-SCOWL.txt.
 libfacedetection face detection weights and network (crates/algo/data/libfacedetection.bin, crates/algo/src/faces/cnn.rs) — BSD-3-Clause, Copyright (c) 2015-2019, Shiqi Yu, all rights reserved. See crates/algo/data/LICENSE-libfacedetection.txt.
 
+Clip Studio Paint file support (crates/clippy-sut) bundles SQLite (public domain, via the rusqlite
+crate, MIT) and uses the tar crate (MIT OR Apache-2.0). Its tile layout of brush tip materials follows
+the format notes of clipfile-rs (https://github.com/Aodaruma/clipfile-rs, MIT, Copyright (c) 2026
+Aodaruma); no clipfile code is included. Clip Studio Paint is a trademark of CELSYS, Inc.; Clippy is
+not affiliated with CELSYS and ships none of its sub tools or materials.
+
 Builds made with craft-fonts (CRAFT_FONTS_DIR; all official releases) also embed the fonts listed in
 https://github.com/storytold/craft-fonts/blob/main/ATTRIBUTION.md (today BIZ UDPGothic, Shippori Mincho and
 BIZ UDMincho; not the web build), under the SIL Open Font License 1.1. Their licence texts

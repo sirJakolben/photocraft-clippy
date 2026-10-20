@@ -1,0 +1,36 @@
+[package]
+name = "photocraft-clippy-sut-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+license = "MIT OR Apache-2.0"
+
+[package.metadata]
+cargo-fuzz = true
+
+[workspace]
+
+[dependencies]
+libfuzzer-sys = "0.4"
+photocraft-clippy-sut = { path = ".." }
+
+[[bin]]
+name = "layer"
+path = "fuzz_targets/layer.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "blobs"
+path = "fuzz_targets/blobs.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "sut"
+path = "fuzz_targets/sut.rs"
+test = false
+doc = false
+bench = false
