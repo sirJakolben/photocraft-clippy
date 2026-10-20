@@ -81,6 +81,29 @@ Snapshot of either mode (`--no-extension` renders PhotoCraft itself):
 cargo run -p photocraft-clippy-ui --example snapshot -- --out ui.png --mode photoshop --lang de
 ```
 
+## Brush engine additions
+
+`crates/paint` carries the brush options Clip Studio Paint sub tools need. Every one is a serde
+field whose default is PhotoCraft's old behaviour and which is left out of JSON until set, so
+saved brushes, presets and `.abr` imports paint and save exactly as upstream.
+
+| Clip Studio Paint                         | Field                                                     |
+|-------------------------------------------|-----------------------------------------------------------|
+| Velocity pen setting                      | `Control::Velocity`                                       |
+| Several pen settings on one value         | `Dynamic.controls` (up to three `Influence`s)             |
+| Anti-aliasing steps                       | `BrushSettings.aa_level`                                  |
+| At least 1 pixel, sync size with view     | `min_one_px`, `size_follows_view`                         |
+| Starting and ending                       | `taper`                                                   |
+| Several tips and their order              | `tips`, `tip_order`                                       |
+| Blend brush strokes with darken           | `blend_darken`                                            |
+| Texture rotation, dual brush texture      | `texture.rotation`, `dual_brush.texture`                  |
+| Watercolor edge                           | `wet_edge`                                                |
+| Stabilization by speed, stickiness        | `smoothing.by_speed`, `smoothing.stickiness`              |
+
+`crates/paint/src/golden_tests.rs` pins a digest of the dabs and pixels of strokes through every
+brush section and built-in preset, recorded on the upstream engine: if it moves, an old brush
+paints differently. Behaviour tests are in `crates/paint/src/csp_tests.rs`.
+
 ## Trademarks
 
 As `docs/brand/LICENSE-brand.txt` requires of forks, the ArtCraft logo files are removed; only

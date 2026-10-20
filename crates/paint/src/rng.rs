@@ -55,6 +55,8 @@ pub mod stream {
     pub const DUAL_FLIP: u64 = 18;
     pub const WET: u64 = 19;
     pub const MIX: u64 = 20;
+    /// Which tip of several a dab takes ([`crate::brush::TipOrder::Random`]).
+    pub const TIP: u64 = 21;
 }
 
 /// Seed derived from arbitrary bytes (FNV-1a then mixed), for commands without an explicit seed.

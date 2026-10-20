@@ -34,8 +34,9 @@ pub mod symmetry;
 pub mod tile;
 
 pub use brush::{
-    BrushPreset, BrushSettings, ColorDynamics, Control, DualBrush, Dynamic, MAX_BRUSH_SIZE, MAX_SCATTER, MaskMode, Pattern, PatternStyle, Pose, PresetCaptures,
-    Scattering, SectionLocks, ShapeDynamics, Smoothing, Texture, TipShape, Transfer,
+    BrushPreset, BrushSettings, ColorDynamics, Control, Controls, DualBrush, Dynamic, Influence, MAX_BRUSH_SIZE, MAX_EXTRA_CONTROLS, MAX_SCATTER, MAX_TIPS,
+    MaskMode, Pattern, PatternStyle, Pose, PresetCaptures, Scattering, SectionLocks, ShapeDynamics, Smoothing, SpeedSmoothing, Taper, Texture, TipOrder,
+    TipShape, Transfer, WetEdge,
 };
 pub use curve::ResponseCurve;
 pub use mixer::MixerSettings;
@@ -106,6 +107,8 @@ pub struct Dab {
     /// Mixer Brush multipliers of Wet and Mix (Transfer › Wetness/Mix Jitter), 1 = as set.
     pub wet: f32,
     pub mix: f32,
+    /// Which tip paints the dab: 0 = the brush's `tip`, `k` = its `tips[k - 1]`.
+    pub tip: u16,
 }
 
 impl Dab {
@@ -127,6 +130,7 @@ impl Dab {
             proj_scale: 1.0,
             wet: 1.0,
             mix: 1.0,
+            tip: 0,
         }
     }
 }
@@ -151,9 +155,28 @@ const TIP_SHAPE: [(f32, f32); 11] =
 /// stays this far inside the radius (a hardness-100 tip is a disc with a ~1 px soft edge at any size).
 const TIP_EDGE_PX: f32 = 1.2;
 
+/// The narrowest anti-aliased edge of a computed tip, in pixels, for an Anti-aliasing step
+/// ([`BrushSettings::aa_level`]): PhotoCraft's own edge without a step (and at step 0, where the
+/// tip is aliased and the edge unused).
+#[inline]
+pub fn aa_edge_px(level: Option<u8>) -> f32 {
+    // Medium (2) is PhotoCraft's own edge; weak halves it, strong doubles it.
+    match level {
+        Some(1) => 0.5 * TIP_EDGE_PX,
+        Some(3..) => 2.0 * TIP_EDGE_PX,
+        _ => TIP_EDGE_PX,
+    }
+}
+
 /// The core radius and shoulder width (both in pixels) of a round tip of `radius` and `hardness`.
 #[inline]
 pub fn tip_shape(radius: f32, hardness: f32) -> (f32, f32) {
+    tip_shape_edge(radius, hardness, TIP_EDGE_PX)
+}
+
+/// [`tip_shape`] with an anti-aliased edge at least `edge` pixels wide ([`aa_edge_px`]).
+#[inline]
+pub fn tip_shape_edge(radius: f32, hardness: f32, edge: f32) -> (f32, f32) {
     let h = if hardness.is_nan() { 0.0 } else { hardness.clamp(0.0, 1.0) } * 10.0;
     let i = (h.floor() as usize).min(9);
     let t = h - i as f32;
@@ -162,7 +185,7 @@ pub fn tip_shape(radius: f32, hardness: f32) -> (f32, f32) {
     let radius = if radius.is_finite() { radius.max(0.0) } else { 0.0 };
     // A tip of a few pixels keeps a narrower edge, so a small hard dab stays solid in the middle.
     // Never sharper than a quarter pixel, the small-tip supersampling step.
-    let edge = TIP_EDGE_PX.min(0.3 * radius).max(0.25);
+    let edge = edge.min(0.3 * radius).max(0.25);
     ((r0 * radius).min(radius - edge).max(0.0), (s * radius).max(edge).max(1e-3))
 }
 
@@ -180,7 +203,19 @@ fn soft_exp(u: f32) -> f32 {
 /// Opacity of a round tip at distance `d` from its centre, edge included (see [`tip_shape`]).
 #[inline]
 pub fn tip_falloff(d: f32, radius: f32, hardness: f32) -> f32 {
-    let (r0, s) = tip_shape(radius, hardness);
+    tip_falloff_edge(d, radius, hardness, TIP_EDGE_PX)
+}
+
+/// [`tip_falloff`] with an anti-aliased edge of at least `edge` pixels ([`aa_edge_px`]).
+#[inline]
+pub fn tip_falloff_edge(d: f32, radius: f32, hardness: f32, edge: f32) -> f32 {
+    falloff_of_shape(d, tip_shape_edge(radius, hardness, edge))
+}
+
+/// [`tip_falloff`] for a shape `(r0, s)` from [`tip_shape_edge`], so a rasterizer works the shape
+/// out once per dab instead of once per pixel.
+#[inline]
+pub(crate) fn falloff_of_shape(d: f32, (r0, s): (f32, f32)) -> f32 {
     if d <= r0 {
         return 1.0;
     }
@@ -191,7 +226,13 @@ pub fn tip_falloff(d: f32, radius: f32, hardness: f32) -> f32 {
 /// How far from its centre a round tip still paints (where [`tip_falloff`] drops below ~0.1 %).
 #[inline]
 pub fn tip_reach(radius: f32, hardness: f32) -> f32 {
-    let (r0, s) = tip_shape(radius, hardness);
+    tip_reach_edge(radius, hardness, TIP_EDGE_PX)
+}
+
+/// [`tip_reach`] with an anti-aliased edge of at least `edge` pixels ([`aa_edge_px`]).
+#[inline]
+pub fn tip_reach_edge(radius: f32, hardness: f32, edge: f32) -> f32 {
+    let (r0, s) = tip_shape_edge(radius, hardness, edge);
     r0 + 2.6 * s
 }
 
@@ -207,11 +248,17 @@ pub fn half_coverage_radius(radius: f32, hardness: f32) -> f32 {
 /// Coverage of a round dab at distance `d` from its centre.
 #[inline]
 pub fn dab_coverage(d: f32, radius: f32, hardness: f32) -> f32 {
+    dab_coverage_edge(d, radius, hardness, TIP_EDGE_PX)
+}
+
+/// [`dab_coverage`] with an anti-aliased edge of at least `edge` pixels ([`aa_edge_px`]).
+#[inline]
+pub fn dab_coverage_edge(d: f32, radius: f32, hardness: f32, edge: f32) -> f32 {
     // NaN distances paint nothing.
-    if d.is_nan() || d >= tip_reach(radius, hardness) + 0.5 {
+    if d.is_nan() || d >= tip_reach_edge(radius, hardness, edge) + 0.5 {
         return 0.0;
     }
-    tip_falloff(d, radius, hardness)
+    tip_falloff_edge(d, radius, hardness, edge)
 }
 
 /// Rasterize a stroke onto `target`, optionally limited by a selection (grayscale coverage surface).
@@ -357,3 +404,8 @@ mod tests {
 
 #[cfg(test)]
 mod brush_tests;
+
+#[cfg(test)]
+mod csp_tests;
+#[cfg(test)]
+mod golden_tests;
