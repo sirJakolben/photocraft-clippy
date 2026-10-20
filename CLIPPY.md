@@ -127,6 +127,99 @@ saved brushes, presets and `.abr` imports paint and save exactly as upstream.
 brush section and built-in preset, recorded on the upstream engine: if it moves, an old brush
 paints differently. Behaviour tests are in `crates/paint/src/csp_tests.rs`.
 
+## Sub tools: mapping and data flow
+
+A Clip Studio Paint sub tool (`.sut`, read and written by `crates/clippy-sut`) becomes PhotoCraft's
+tool, brush and tool options through `crates/clippy-ui/src/mapping` (M8). Photoshop mode never
+reads or writes a `.sut`.
+
+**Data flow** (`crates/clippy-ui/src/subtool.rs`):
+
+1. The active sub tool's `.sut` is the source of truth; PhotoCraft's tool, brush and tool
+   options are its working copy. Its path is the preference `clippy.subtool`.
+2. `clippy.subtool.select {"path"}` reads the `.sut`, selects its tool as the tool column does
+   (`extension::select_tool`: `tool_memory::select`, then the tool's own brush), sets the brush
+   and the tool options it maps, and calls `brush_changed()`.
+3. Every frame in Clippy mode, once the pointer is up, a moved `brush_rev` or a changed tool
+   option runs `clippy.subtool.writeBack`: only the rules whose PhotoCraft fields changed are
+   written, column by column by name, a column that already reads as the new value keeps its
+   bytes, nothing is added, the rest of the file stays as it is; saved atomically (temporary file,
+   rename). Only while the sub tool's tool (and its brush) is the current one.
+4. So changes through commands, MCP, the control channel and the options bar land in the sub
+   tool the same way.
+5. In Photoshop mode the `clippy.subtool.*` commands are refused and the frame does nothing;
+   switching back reloads the active sub tool from its file.
+6. `clippy.subtool.reset` copies the initial settings (`NodeInitVariantID`) over the current
+   ones; `clippy.subtool.saveAsDefault` copies the current ones into the initial settings.
+7. PhotoCraft's brush presets are hidden in Clippy mode (the Brush Preset picker's list is empty).
+8. Columns without a PhotoCraft counterpart stay in the `.sut` and are not shown
+   (`clippy.subtool.get` lists them as `kept`).
+
+`clippy.subtool.get` reports the active sub tool, `clippy.subtool.export {"path","name"?}` writes
+PhotoCraft's current tool and brush as a new `.sut` (`mapping::reverse`, for building the default
+stock). The engine registers every `clippy.subtool.*` command (listed for agents and MCP) but runs
+none: without Clippy's interface they report that they aren't available. For automation they
+count as file access (`automation::workspace`, a `path` is refused).
+
+**Tools** (`mapping/tool.rs`, In/Out = `NodeInputOp`/`NodeOutputOp`):
+
+| In/Out | PhotoCraft |
+|---|---|
+| 1/1, 2/2, 3/3 | Zoom, Hand, Rotate View |
+| 10/10 | Brush; colour mixing (amount or density of paint below 100 %) → Mixer Brush; named Weichzeichnen/blur → Blur; Verwischen/smudge → Smudge |
+| 11/11 | Brush; `AntiAlias` 0 → Pencil |
+| 12/12, 13/13 | Eraser (erase all layers: one layer), Clone Stamp |
+| 14/14 | Brush with fixed spacing |
+| 10/20 | Brush in Quick Mask (selection pen) |
+| 30/20, 31/20, 33/20, 50/20 | Rectangular/Elliptical Marquee (by name), Lasso, Polygonal Lasso, Magic Wand |
+| 50/50, 52/52, 41/41, 70/70 | Paint Bucket, Gradient, Eyedropper, Type |
+| 40/40, 34/42, 45/45 | Move; with Auto-Select (layer); with transform controls |
+| 30/30, 32/32 | Rectangle, Ellipse, Polygon (by name), Line |
+| everything else | Unsupported: selected with a notice, PhotoCraft's tool stays (lasso fill 31/31 and liquify 120/120 are still to build) |
+
+**Brush columns** (`mapping/brush.rs`, one rule each; units are assumptions until checked with
+`CLIPPY_CSP_FIXTURES`): `BrushSize` (+ `BrushSizeUnit`: px, mm, cm, inch, pt, Q at the document's
+resolution) and `BrushSizeEffector` → `size`, `shape_dynamics.size`; `BrushAtLeast1Pixel`,
+`BrushSizeSyncViewScale` → `min_one_px`, `size_follows_view`; `Opacity` (%) and its effector →
+`opacity`, `transfer.opacity`; `CompositeMode` → `mode` (`mapping/blend.rs`; Glow Dodge and Add
+(Glow) read as Color Dodge and Linear Dodge and stay as stored); `BrushMix*` → `mixer`
+(approximation); `BrushHue/Saturation/ValueChange`, `BrushSubColor`, `BrushChangeStrokeColor` →
+`color_dynamics`; `AntiAlias` 0–3 → `aa_level`; `BrushUsePatternImage`, `BrushPatternImageArray`,
+`BrushPatternOrderType` → `tip`, `tips`, `tip_order` (tips from the embedded materials, read only);
+`BrushHardness`; `BrushThickness` (+ effector) → `roundness`; `BrushRotation`,
+`BrushVerticalThicknes` (+90°), `BrushRotationEffector`, `BrushRotationRandomScale` → `angle`,
+`shape_dynamics.angle`; `BrushPatternReverseHorizontal/Vertical` → `flip_x/y`; `BrushFlow` (+
+effector) → `flow`, `transfer.flow`; `BrushUseSpray`, `BrushSpraySize/Density` (+ effector) →
+`scattering` (approximation); `BrushInterval`, `BrushAutoIntervalType` → `spacing`;
+`BrushContinuousPlot` → `build_up`; `BrushBlendPatternByDarken` → `blend_darken`; `Texture…` →
+`texture` (pattern read only); `UseDualBrush`, `Dual…` → `dual_brush` subset; `BrushUseWaterEdge`,
+`BrushWaterEdgeRadius/AlphaPower` → `wet_edges`, `wet_edge`; `FlickerReduction`,
+`FlickerReductionBySpeed(Type)`, `Stickness` → `smoothing`; `BrushEnableSnap` → View › Snap;
+`BrushUseIn/Out`, `BrushIn/OutLength`, `BrushInOutBySpeed` → `taper`. Pen settings
+(`…Effector`, `mapping/effector.rs`): the first active of pressure, tilt and velocity is the
+dynamic's control (minimum, curve), the others its further `controls`, random its jitter. Kept in
+the `.sut` only: ribbon, vector eraser, erase all layers, correction, sharpen corner, vector
+magnet, refer layer, `BrushAdjustVelocity`, `BrushAdjustFlowByInterval`, the start/end ratios and
+targets, the interval effector, texture emphasis, spray bias, the other water edge powers.
+
+**Other tools** (`mapping/options.rs`): `BrushBlur` → Blur strength; `Opacity`, `AntiAlias` of the
+fill → fill opacity, anti-alias; selection mode, anti-alias, tolerance, contiguous, sample all
+layers, font, size, style, alignment and anti-aliasing of text, the eyedropper's sample and the
+move tool's auto select map to the existing `ToolOptions`. Their column names are unverified
+guesses (a name a file doesn't have maps nothing and is never written).
+
+| File                                  | Hook                                                                  |
+|---------------------------------------|-----------------------------------------------------------------------|
+| `crates/clippy-ui/src/{mapping,subtool.rs}` | New: the mapping and the data flow                              |
+| `crates/engine/src/clippy_cmds.rs`    | `clippy.subtool.*` specs, `ClippyPrefs::subtool`                      |
+| `crates/ui-egui/src/extension.rs`     | `Extension::{command, frame, hides_brush_presets}`, `select_tool`, `PhotocraftApp::extension_data` |
+| `crates/ui-egui/src/lib.rs`           | Field `extension_data`; `run_command` asks the extension first; the frame calls its `frame` |
+| `crates/ui-egui/src/paint_mouse.rs`   | The Brush Preset picker shows no presets when the extension hides them |
+| `crates/automation/src/workspace.rs`  | `clippy.subtool.select/export` with a `path` count as file access     |
+
+Tests: `cargo test -p photocraft-clippy-ui --test mapping --test subtool` (synthetic `.sut` only;
+with `CLIPPY_CSP_FIXTURES` also every real export under `Sut-Exporte`).
+
 ## Trademarks
 
 As `docs/brand/LICENSE-brand.txt` requires of forks, the ArtCraft logo files are removed; only
