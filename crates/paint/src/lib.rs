@@ -209,7 +209,13 @@ pub fn tip_falloff(d: f32, radius: f32, hardness: f32) -> f32 {
 /// [`tip_falloff`] with an anti-aliased edge of at least `edge` pixels ([`aa_edge_px`]).
 #[inline]
 pub fn tip_falloff_edge(d: f32, radius: f32, hardness: f32, edge: f32) -> f32 {
-    let (r0, s) = tip_shape_edge(radius, hardness, edge);
+    falloff_of_shape(d, tip_shape_edge(radius, hardness, edge))
+}
+
+/// [`tip_falloff`] for a shape `(r0, s)` from [`tip_shape_edge`], so a rasterizer works the shape
+/// out once per dab instead of once per pixel.
+#[inline]
+pub(crate) fn falloff_of_shape(d: f32, (r0, s): (f32, f32)) -> f32 {
     if d <= r0 {
         return 1.0;
     }

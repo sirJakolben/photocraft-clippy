@@ -19,7 +19,7 @@ use crate::dynamics::DabGenerator;
 use crate::retouch::{Footprint, alpha_index, over_native};
 use crate::rng::hash2;
 use crate::tile::{Mips, PatternImage};
-use crate::{Dab, StrokePoint, aa_edge_px, dab_coverage_edge, tip_falloff_edge, tip_reach_edge};
+use crate::{Dab, StrokePoint, aa_edge_px, falloff_of_shape, tip_reach_edge, tip_shape_edge};
 
 /// Salt of the 8-bit dither's per-pixel noise.
 const DITHER_SALT: u64 = 0x0000_6469_7468_6572;
@@ -324,6 +324,10 @@ impl BrushContext {
         let rm = (r * ro).max(0.5);
         let reach = if aliased || mips.is_some() { rm } else { tip_reach_edge(rm, hardness, edge).max(rm) };
         let reach2 = (reach + 0.5) * (reach + 0.5);
+        // The computed tip's shape and coverage reach, worked out once for the dab (the same
+        // arithmetic as `dab_coverage_edge` per pixel).
+        let shape = tip_shape_edge(rm, hardness, edge);
+        let cover_reach = shape.0 + 2.6 * shape.1 + 0.5;
         // Sampled-tip mapping.
         let (level, inv_scale, tw, th) = match mips {
             Some(m) => {
@@ -393,7 +397,7 @@ impl BrushContext {
                                 let sd = ((su * ro).powi(2) + sv * sv).sqrt();
                                 // Each sample takes the tip's own edge, so the covered area
                                 // changes smoothly with the dab's position.
-                                sum += tip_falloff_edge(sd, rm, hardness, edge);
+                                sum += falloff_of_shape(sd, shape);
                             }
                         }
                         (sum / (SUBPIXEL.len() * SUBPIXEL.len()) as f32, d2.sqrt() / rm)
@@ -404,7 +408,13 @@ impl BrushContext {
                             continue;
                         }
                         let dd = d2.sqrt();
-                        let val = if aliased { if dd <= rm { 1.0 } else { 0.0 } } else { dab_coverage_edge(dd, rm, hardness, edge) };
+                        let val = if aliased {
+                            if dd <= rm { 1.0 } else { 0.0 }
+                        } else if dd.is_nan() || dd >= cover_reach {
+                            0.0
+                        } else {
+                            falloff_of_shape(dd, shape)
+                        };
                         (val, dd / rm)
                     }
                     Some(m) => {
@@ -1178,6 +1188,7 @@ fn rasterize_round(d: &Dab, rect: Rect, out: &mut [f32], hardness: f32, aliased:
     let w = rect.width() as usize;
     let reach = if aliased { rm } else { tip_reach_edge(rm, hardness, edge).max(rm) };
     let reach2 = (reach + 0.5) * (reach + 0.5);
+    let shape = tip_shape_edge(rm, hardness, edge);
     for (yy, row) in out.chunks_exact_mut(w).enumerate() {
         let dy = (rect.y0 + yy as i32) as f32 + 0.5 - cy;
         if aliased {
@@ -1190,7 +1201,7 @@ fn rasterize_round(d: &Dab, rect: Rect, out: &mut [f32], hardness: f32, aliased:
             for (xx, dst) in row.iter_mut().enumerate() {
                 let dx = (rect.x0 + xx as i32) as f32 + 0.5 - cx;
                 let d2 = (dx * ro).powi(2) + dy * dy;
-                let val = if d2 >= reach2 { 0.0 } else { tip_falloff_edge(d2.sqrt(), rm, hardness, edge) };
+                let val = if d2 >= reach2 { 0.0 } else { falloff_of_shape(d2.sqrt(), shape) };
                 *dst = if val <= 0.0 { 0.0 } else { val * d.alpha };
             }
         }
