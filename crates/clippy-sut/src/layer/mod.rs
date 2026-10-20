@@ -40,8 +40,9 @@ pub struct Tip {
 }
 
 impl Tip {
-    /// The coverage of each pixel as Clip Studio Paint applies a tip: alpha scaled by darkness
-    /// (black paints fully, white not at all). Mask-only tips give their alpha.
+    /// Coverage of each pixel, assuming Clip Studio Paint paints with darkness × alpha (black
+    /// fully, white not at all; mask-only tips give their alpha). Unverified until M8 compares
+    /// strokes with Clip Studio Paint.
     pub fn coverage(&self) -> Vec<u8> {
         self.rgba
             .as_chunks::<4>()
