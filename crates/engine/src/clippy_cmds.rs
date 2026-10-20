@@ -765,15 +765,11 @@ mod stock_tests {
 
     fn abr(dir: &Path, name: &str) -> PathBuf {
         use photocraft_psd::abr::{AbrSample, LegacyBrush, LegacyTip, write_v12};
-        let tip = AbrSample { id: String::new(), width: 6, height: 4, depth: 8, data: vec![255; 24] };
+        let tip = || AbrSample { id: String::new(), width: 6, height: 4, depth: 8, data: vec![255; 24] };
+        // Sampled tips: legacy computed brushes have no name of their own ("9 px Round").
         let brushes = [
-            LegacyBrush { name: "Hard Round".into(), spacing: 25, anti_alias: true, tip: LegacyTip::Sampled(tip) },
-            LegacyBrush {
-                name: "Soft/Round".into(),
-                spacing: 10,
-                anti_alias: true,
-                tip: LegacyTip::Computed { diameter: 9, hardness: 0, angle: 0, roundness: 100 },
-            },
+            LegacyBrush { name: "Hard Round".into(), spacing: 25, anti_alias: true, tip: LegacyTip::Sampled(tip()) },
+            LegacyBrush { name: "Soft/Round".into(), spacing: 10, anti_alias: true, tip: LegacyTip::Sampled(tip()) },
         ];
         let path = dir.join(name);
         std::fs::write(&path, write_v12(2, &brushes, true).unwrap()).unwrap();
