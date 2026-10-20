@@ -53,7 +53,9 @@ pub use names::{EntryPath, META_FILE, SUT_EXT};
 #[cfg(not(target_arch = "wasm32"))]
 pub use template::{PRESET_COLUMN, stored_preset};
 
-use std::path::{Path, PathBuf};
+#[cfg(not(target_arch = "wasm32"))]
+use std::path::Path;
+use std::path::PathBuf;
 
 /// Why a stock operation failed. Messages name the file or entry and say what to do.
 #[derive(Debug, thiserror::Error)]
@@ -117,6 +119,7 @@ pub enum Error {
 /// Shorthand for results of this crate.
 pub type Result<T> = std::result::Result<T, Error>;
 
+#[cfg(not(target_arch = "wasm32"))]
 impl Error {
     pub(crate) fn io(path: &Path, source: std::io::Error) -> Self {
         Error::Io { path: path.to_owned(), source }
@@ -127,6 +130,7 @@ impl Error {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn check_limit(what: &'static str, value: u64, limit: u64) -> Result<()> {
     if value > limit { Err(Error::Limit { what, value, limit }) } else { Ok(()) }
 }
