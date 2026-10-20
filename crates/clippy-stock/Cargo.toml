@@ -6,8 +6,28 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
-# Empty until M7, which adds photocraft-clippy-sut (the .sut format) and photocraft-io.
 [dependencies]
+photocraft-clippy-sut = { path = "../clippy-sut" }
+# Brush presets of PhotoCraft's .abr import (photocraft-io's abr_map, called by the engine).
+photocraft-paint = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+flate2 = { workspace = true }
+
+# Watching the stock folder is desktop-only; the web build has no stock on disk.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+notify = { version = "8.2", default-features = false, features = ["macos_fsevent"] }
+
+# Linux and the BSDs use the freedesktop.org trash (src/trash.rs); macOS and Windows their own.
+[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
+trash = { version = "5", default-features = false }
+
+[dev-dependencies]
+photocraft-clippy-sut = { path = "../clippy-sut", features = ["synth"] }
+tempfile = "3"
+# Builds synthetic tool databases larger than clippy-sut's generator allows (it keeps under 256 nodes).
+rusqlite = { version = "0.40", default-features = false, features = ["bundled", "serialize"] }
 
 [lints]
 workspace = true
