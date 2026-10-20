@@ -11,13 +11,15 @@
 //! 3. Photoshop mode never reads or writes a `.sut`; switching back reloads the active sub tool.
 //! 4. `clippy.subtool.reset` restores the initial settings (`NodeInitVariantID`);
 //!    `clippy.subtool.saveAsDefault` makes the current settings the initial ones.
+//! 5. A locked sub tool (`clippy.subtool.lock`, the `.sut`'s `NodeLock`, E10) takes changes in the
+//!    working copy but never writes them; selecting it again brings back what the file holds.
 //!
 //! A sub tool PhotoCraft has no tool for is selected with a notice and changes nothing.
 
 use photocraft_clippy_sut::{Sut, Variant};
 use photocraft_engine::BrushSettings;
 use photocraft_engine::clippy_cmds::{
-    ClippyMode, SUBTOOL_COMMANDS, SUBTOOL_EXPORT, SUBTOOL_GET, SUBTOOL_RESET, SUBTOOL_SAVE_AS_DEFAULT, SUBTOOL_SELECT, SUBTOOL_WRITE_BACK,
+    ClippyMode, SUBTOOL_COMMANDS, SUBTOOL_EXPORT, SUBTOOL_GET, SUBTOOL_LOCK, SUBTOOL_RESET, SUBTOOL_SAVE_AS_DEFAULT, SUBTOOL_SELECT, SUBTOOL_WRITE_BACK,
 };
 use photocraft_ui_egui::PhotocraftApp;
 use photocraft_ui_egui::state::Tool;
@@ -52,9 +54,11 @@ pub struct State {
     away: bool,
     /// A path that failed to load, so the frame doesn't try it again every frame.
     failed: Option<String>,
+    /// The palettes' view of the sub tool stock (M9).
+    pub(crate) view: crate::palettes::View,
 }
 
-fn state(app: &mut PhotocraftApp) -> &mut State {
+pub(crate) fn state(app: &mut PhotocraftApp) -> &mut State {
     app.extension_data::<State>()
 }
 
@@ -81,6 +85,10 @@ pub fn command(app: &mut PhotocraftApp, id: &str, params: &Value) -> Option<Resu
         SUBTOOL_RESET => reset(app),
         SUBTOOL_SAVE_AS_DEFAULT => save_as_default(app),
         SUBTOOL_EXPORT => path_param(id, params).and_then(|path| export(app, &path, params.get("name"))),
+        SUBTOOL_LOCK => match params.get("on") {
+            Some(Value::Bool(on)) => lock(app, *on),
+            _ => Err(format!("{id}: `on` must be true or false")),
+        },
         _ => return None,
     })
 }
@@ -98,6 +106,22 @@ fn path_param(id: &str, params: &Value) -> Result<String, String> {
 pub fn frame(app: &mut PhotocraftApp, ctx: &egui::Context) {
     let pointer_down = ctx.input(|i| i.pointer.any_down());
     tick(app, pointer_down);
+}
+
+/// The active sub tool's file moved to `path` (renamed, moved to another group or tool, in Clippy
+/// or a file manager): the preference and the data flow follow it without reading it again. An
+/// empty `path` means it is gone: nothing is selected, and nothing is written.
+pub fn retarget(app: &mut PhotocraftApp, path: &str) {
+    let st = state(app);
+    match st.active.as_mut() {
+        Some(a) if !path.is_empty() => a.path = path.to_owned(),
+        _ => st.active = None,
+    }
+    st.failed = None;
+    if app.session.prefs().clippy.subtool != path {
+        let path = path.to_owned();
+        app.session.edit_prefs(|p| p.clippy.subtool = path);
+    }
 }
 
 /// The frame's part of the data flow: load the sub tool the preference names (at start, after a
@@ -141,6 +165,48 @@ fn changed(app: &mut PhotocraftApp) -> bool {
     let rev = app.session.tools.brush_rev;
     let (options, mode, snap) = (app.ui.tool_options.clone(), app.ui.selection_mode, app.ui.extras.snap);
     state(app).active.as_ref().is_some_and(|a| a.brush_rev != rev || a.applied.options != options || a.applied.selection_mode != mode || a.applied.snap != snap)
+}
+
+/// What the Tool Property palette shows of the active sub tool.
+pub(crate) struct Info {
+    pub name: String,
+    /// Its PhotoCraft tool; `None` for a sub tool PhotoCraft can't map.
+    pub tool: Option<Tool>,
+    pub notice: Option<String>,
+    pub locked: bool,
+    /// The ids of the settings shown in Tool Property (`VariantShowParam`), in order.
+    pub show: Vec<u32>,
+    /// Whether PhotoCraft's tool and brush are this sub tool's now (another tool may have been
+    /// chosen through a shortcut or PhotoCraft's tool column meanwhile).
+    pub current: bool,
+}
+
+/// The active sub tool for the palettes, if any.
+pub(crate) fn info(app: &mut PhotocraftApp) -> Option<Info> {
+    let a = state(app).active.as_ref()?;
+    let sub = &a.sut.subtool;
+    let tool = a.choice.tool();
+    let notice = match &a.choice {
+        Choice::Unsupported { reason } => Some(reason.clone()),
+        Choice::Tool { .. } => None,
+    };
+    let show = sub.variant.as_ref().and_then(|v| v.show_params()).and_then(Result::ok).map(|p| p.ids).unwrap_or_default();
+    let (name, locked) = (sub.name().to_owned(), sub.lock());
+    let current = tool.is_some_and(|t| owns_working_copy(app, t));
+    Some(Info { name, tool, notice, locked, show, current })
+}
+
+/// The brush the active sub tool paints with now (the working copy), when it is a brush and
+/// PhotoCraft's brush is its.
+pub(crate) fn live_brush(app: &mut PhotocraftApp) -> Option<BrushSettings> {
+    let tool = state(app).active.as_ref()?.choice.tool()?;
+    (Scope::Brush.applies(tool) && owns_working_copy(app, tool)).then(|| app.session.tools.brush.clone())
+}
+
+/// Make the active sub tool's tool and brush PhotoCraft's again (after another tool was chosen).
+pub(crate) fn reselect(app: &mut PhotocraftApp) -> Result<Value, String> {
+    let path = state(app).active.as_ref().map(|a| a.path.clone()).ok_or_else(|| tl!("No sub tool is selected.").to_string())?;
+    app.run(SUBTOOL_SELECT, json!({"path": path}))
 }
 
 /// PhotoCraft's working copy as it is now.
@@ -265,6 +331,12 @@ fn write_back(app: &mut PhotocraftApp) -> Result<Value, String> {
             return Ok(json!({"written": [], "reason": "another tool is in use"}));
         }
         let now = working(app);
+        if a.sut.subtool.lock() {
+            // Taken as seen, so the frame doesn't ask again until the next change.
+            a.applied = now;
+            a.brush_rev = app.session.tools.brush_rev;
+            return Ok(json!({"written": [], "reason": "locked"}));
+        }
         let variant = a.sut.subtool.variant.as_mut().ok_or_else(|| tl!("The sub tool has no settings (no NodeVariantID).").to_string())?;
         let written = mapping::write_changed(tool, &a.applied, &now, variant, a.ctx);
         // Taken as written even if the save fails, so a full disk doesn't retry every frame; the
@@ -276,6 +348,27 @@ fn write_back(app: &mut PhotocraftApp) -> Result<Value, String> {
         }
         Ok(json!({"written": written}))
     })
+}
+
+/// `clippy.subtool.lock`: set the active sub tool's `NodeLock` and save it. Unlocking brings back
+/// the settings the file holds, so the working copy and the file agree again.
+fn lock(app: &mut PhotocraftApp, on: bool) -> Result<Value, String> {
+    let (path, sut) = with_active(app, |app, a| {
+        if a.sut.subtool.lock() != on {
+            if !a.sut.subtool.set_lock(on) {
+                return Err(tl!("This sub tool file can't be locked (it has no NodeLock column).").into());
+            }
+            save(&a.path, &a.sut)?;
+        }
+        // What the working copy holds now counts as seen.
+        a.applied = working(app);
+        a.brush_rev = app.session.tools.brush_rev;
+        Ok((a.path.clone(), a.sut.clone()))
+    })?;
+    if !on {
+        activate(app, &path, sut)?;
+    }
+    Ok(json!({"path": path, "locked": on}))
 }
 
 /// Copy every column of `from` but its id into `to`.
@@ -353,6 +446,7 @@ pub fn summary(app: &mut PhotocraftApp) -> Value {
         "outputOp": sub.output_op(),
         "tool": tool,
         "supported": tool.is_some(),
+        "locked": sub.lock(),
         "mapped": mapped,
         "kept": kept,
     });

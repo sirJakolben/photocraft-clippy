@@ -13,6 +13,8 @@
 //! menu title `A` and points at the submenu rows `B`, … so the open menu shows in the image;
 //! `--hover-at X,Y` points at a screen position afterwards (a row found by position only).
 //! `--no-extension` renders PhotoCraft itself, the baseline to compare the Photoshop mode with.
+//! `--stock DIR` uses the sub tool stock in `DIR` (`clippy.stockDir`) and waits until the palettes
+//! show it; `--subtool Tool/Group/Name` then selects that sub tool of it.
 
 use egui_kittest::kittest::Queryable;
 use photocraft_ui_egui::control::{ControlRequest, Outcome, handle};
@@ -21,6 +23,21 @@ use serde_json::{Value, json};
 
 fn arg(args: &[String], name: &str) -> Option<String> {
     args.iter().position(|a| a == name).and_then(|i| args.get(i + 1).cloned())
+}
+
+type Harness = egui_kittest::Harness<'static, PhotocraftApp>;
+
+/// Send control calls, letting the app settle after each.
+fn calls_after(harness: &mut Harness, ctx: &egui::Context, calls: Vec<(String, Value)>) {
+    for (method, params) in calls {
+        let (req, _rx) = ControlRequest::new(&method, params);
+        if let Outcome::Done(v) = handle(harness.state_mut(), ctx, &req)
+            && v.get("ok") == Some(&Value::Bool(false))
+        {
+            eprintln!("{method}: {v}");
+        }
+        harness.run_steps(4);
+    }
 }
 
 fn main() {
@@ -34,6 +51,8 @@ fn main() {
     let lang = arg(&args, "--lang").unwrap_or_else(|| "en".into());
     let menu = arg(&args, "--menu");
     let extension = !args.iter().any(|a| a == "--no-extension");
+    let stock = arg(&args, "--stock");
+    let subtool = arg(&args, "--subtool");
     let script: Vec<(String, Value)> =
         arg(&args, "--script").map(|s| serde_json::from_str::<Vec<(String, Value)>>(&s).expect("--script must be [[method, params], …]")).unwrap_or_default();
 
@@ -55,7 +74,9 @@ fn main() {
     if let Some(mode) = mode {
         calls.push(("engine.execute".into(), json!({"id": "clippy.mode.set", "params": {"mode": mode}})));
     }
-    calls.extend(script);
+    if let Some(dir) = &stock {
+        calls.push(("engine.execute".into(), json!({"id": "prefs.set", "params": {"path": "clippy.stockDir", "value": dir}})));
+    }
     harness.run_steps(4);
     for (method, params) in calls {
         let (req, _rx) = ControlRequest::new(&method, params);
@@ -65,6 +86,25 @@ fn main() {
             eprintln!("{method}: {v}");
         }
         harness.run_steps(4);
+    }
+    if let Some(dir) = &stock {
+        // The stock opens in the background.
+        for _ in 0..400 {
+            if photocraft_clippy_ui::palettes::stock(harness.state_mut()).is_some() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(25));
+            harness.step();
+        }
+        if let Some(sub) = &subtool {
+            let path = std::path::Path::new(dir).join(format!("{sub}.sut"));
+            calls_after(&mut harness, &ctx, vec![("engine.execute".into(), json!({"id": "clippy.subtool.select", "params": {"path": path}}))]);
+        }
+    }
+    calls_after(&mut harness, &ctx, script);
+    // Tile previews load a few per frame.
+    for _ in 0..40 {
+        harness.step();
     }
     if let Some(menu) = menu {
         // Real pointer events: the menu titles open on the press, submenus on hover.

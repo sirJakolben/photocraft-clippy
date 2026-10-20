@@ -51,9 +51,11 @@ pub const SUBTOOL_RESET: &str = "clippy.subtool.reset";
 pub const SUBTOOL_SAVE_AS_DEFAULT: &str = "clippy.subtool.saveAsDefault";
 /// Write PhotoCraft's current tool and brush as a new `.sut`: `{"path": str, "name": str?}`.
 pub const SUBTOOL_EXPORT: &str = "clippy.subtool.export";
+/// Lock the active sub tool's settings against changes, or unlock them: `{"on": bool}`.
+pub const SUBTOOL_LOCK: &str = "clippy.subtool.lock";
 /// Every `clippy.subtool.*` command. `photocraft-clippy-ui` runs them (they read and write
 /// files and drive the shell's tool); the engine only lists them.
-pub const SUBTOOL_COMMANDS: [&str; 6] = [SUBTOOL_SELECT, SUBTOOL_GET, SUBTOOL_WRITE_BACK, SUBTOOL_RESET, SUBTOOL_SAVE_AS_DEFAULT, SUBTOOL_EXPORT];
+pub const SUBTOOL_COMMANDS: [&str; 7] = [SUBTOOL_SELECT, SUBTOOL_GET, SUBTOOL_WRITE_BACK, SUBTOOL_RESET, SUBTOOL_SAVE_AS_DEFAULT, SUBTOOL_EXPORT, SUBTOOL_LOCK];
 
 /// Which interface Clippy shows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -232,6 +234,11 @@ pub fn specs() -> Vec<CommandSpec> {
             SUBTOOL_EXPORT,
             "Export Sub Tool",
             r##"{"path":str,"name":str?} → {path,tool}: PhotoCraft's current tool, brush and tool options as a new .sut (for building sub tools from PhotoCraft settings)"##,
+        ),
+        subtool_spec(
+            SUBTOOL_LOCK,
+            "Lock Sub Tool",
+            r##"{"on":bool} → {path,locked}: lock the active sub tool (the .sut's NodeLock): changes to its settings are no longer written into it, and selecting it again brings back what it holds. false unlocks it"##,
         ),
     ]
     .into_iter()
@@ -555,7 +562,7 @@ fn stock_specs() -> Vec<CommandSpec> {
         spec(
             STOCK_LIST,
             "Sub Tool Stock",
-            r##"{} → {root, default, tools:[{dir, name, icon, shortcut, warning, groups:[{dir, name, icon, shortcut, warning, subtools:[{file, name, nodeName, uuid, shortcut, warning}]}]}], warnings}: the sub tool stock as on disk (clippy.stockDir, else "stock" in the settings folder), in display order. A broken .sut is an entry with a warning; unknown files are ignored"##,
+            r##"{} → {root, default, tools:[{dir, name, icon, shortcut, warning, groups:[{dir, name, icon, shortcut, warning, subtools:[{file, name, nodeName, uuid, inputOp, outputOp, shortcut, warning}]}]}], warnings}: the sub tool stock as on disk (clippy.stockDir, else "stock" in the settings folder), in display order. A broken .sut is an entry with a warning; unknown files are ignored"##,
             stock::list,
         ),
         spec(STOCK_TOOL_CREATE, "New Tool", r##"{"name"} → {path}: a new tool folder, last; a clash gets a number ("Pen 2")"##, stock::tool_create),

@@ -73,6 +73,10 @@ pub struct SubToolEntry {
     pub uuid: String,
     /// The name stored in the file (`NodeName`); the display name follows the file name.
     pub node_name: String,
+    /// `NodeInputOp` and `NodeOutputOp`: what kind of tool the sub tool is (`None` when the file
+    /// is broken or lacks them).
+    pub input_op: Option<i64>,
+    pub output_op: Option<i64>,
     /// Why the file can't be used (P10); `None` for a good sub tool.
     pub warning: Option<String>,
 }
@@ -145,6 +149,7 @@ mod load {
         stamp: (u64, Option<SystemTime>),
         uuid: String,
         node_name: String,
+        ops: (Option<i64>, Option<i64>),
         warning: Option<String>,
     }
 
@@ -229,6 +234,8 @@ mod load {
                 shortcut: m.shortcuts.get(&file).cloned(),
                 uuid: parsed.uuid,
                 node_name: parsed.node_name,
+                input_op: parsed.ops.0,
+                output_op: parsed.ops.1,
                 warning: parsed.warning,
                 file,
             });
@@ -270,11 +277,17 @@ mod load {
             return hit.clone();
         }
         let parsed = match fsutil::read_capped(path, MAX_SUT_BYTES).and_then(|b| Sut::from_bytes(&b, &Limits::default()).map_err(|e| Error::sut(path, e))) {
-            Ok(sut) => Parsed { stamp, uuid: hex(sut.subtool.uuid()), node_name: sut.subtool.name().to_owned(), warning: None },
+            Ok(sut) => Parsed {
+                stamp,
+                uuid: hex(sut.subtool.uuid()),
+                node_name: sut.subtool.name().to_owned(),
+                ops: (sut.subtool.input_op(), sut.subtool.output_op()),
+                warning: None,
+            },
             Err(Error::Sut { source, .. }) => {
-                Parsed { stamp, uuid: String::new(), node_name: String::new(), warning: Some(format!("not a readable sub tool: {source}")) }
+                Parsed { stamp, uuid: String::new(), node_name: String::new(), ops: (None, None), warning: Some(format!("not a readable sub tool: {source}")) }
             }
-            Err(e) => Parsed { stamp, uuid: String::new(), node_name: String::new(), warning: Some(format!("can't be read: {e}")) },
+            Err(e) => Parsed { stamp, uuid: String::new(), node_name: String::new(), ops: (None, None), warning: Some(format!("can't be read: {e}")) },
         };
         cache.files.insert(path.to_owned(), parsed.clone());
         parsed

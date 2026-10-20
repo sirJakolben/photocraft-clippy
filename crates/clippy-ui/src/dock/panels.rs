@@ -45,8 +45,12 @@ pub enum Body {
     Canvas,
     /// PhotoCraft's dock panel of that group and tab label.
     PhotoCraft(Group, &'static str),
-    /// PhotoCraft's tool column, until Clippy's tool palette (M9).
-    Toolbar,
+    /// Clippy's Tool palette (M9).
+    Tools,
+    /// Clippy's Sub Tool palette (M9).
+    SubTools,
+    /// Clippy's Tool Property palette (M9).
+    ToolProperty,
     /// A Clippy palette that isn't built yet: a note in its place.
     Planned,
 }
@@ -71,9 +75,9 @@ const fn panel(id: PanelId, title: &'static str, icon: &'static str, min_height:
 /// Every palette, in the order Window menus list them.
 pub const PANELS: [Panel; 26] = [
     panel(PanelId::Canvas, "Canvas", "image", 0.0, Body::Canvas),
-    panel(PanelId::Tool, "Tool", "brush", 120.0, Body::Toolbar),
-    panel(PanelId::SubTool, "Sub Tool", "panels-top-left", 80.0, Body::Planned),
-    panel(PanelId::ToolProperty, "Tool Property", "sliders-horizontal", 80.0, Body::Planned),
+    panel(PanelId::Tool, "Tool", "brush", 120.0, Body::Tools),
+    panel(PanelId::SubTool, "Sub Tool", "panels-top-left", 80.0, Body::SubTools),
+    panel(PanelId::ToolProperty, "Tool Property", "sliders-horizontal", 80.0, Body::ToolProperty),
     panel(PanelId::CommandBar, "Command Bar", "app-window", 32.0, Body::Planned),
     panel(PanelId::ColorWheel, "Color Wheel", "palette", 80.0, Body::Planned),
     panel(PanelId::ColorSlider, "Color", "contrast", 80.0, Body::PhotoCraft(Group::Color, "Color")),
@@ -124,7 +128,9 @@ pub fn body(app: &mut PhotocraftApp, ui: &mut egui::Ui, id: PanelId) {
                 photocraft_ui_egui::extension::photocraft_panel(app, ui, group, label);
             });
         }
-        Body::Toolbar => photocraft_ui_egui::panels::toolbar(app, ui),
+        Body::Tools => crate::palettes::tools::show(app, ui),
+        Body::SubTools => crate::palettes::subtools::show(app, ui),
+        Body::ToolProperty => crate::palettes::property::show(app, ui),
         Body::Planned => planned(ui, id),
     }
 }
