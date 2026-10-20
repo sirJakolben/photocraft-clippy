@@ -199,8 +199,11 @@ The engine commands change the stock on disk and keep no state (stock paths are 
 | `clippy.stock.import`                     | `.sut` into a group; `.todb` with its material folder; `.abr` as a new group of the brush tool |
 | `clippy.stock.export`, `saveAs`           | Copy of the stock or one entry; Save Brushes As (works there after) |
 
-Open: the app does not call `set_settings_dir` yet (without it a stock folder must be chosen),
-nothing in the interface shows the stock (M9), and whether Clip Studio Paint opens the `.sut`
+The app names its settings folder at start, so the default stock is `<settings folder>/stock`.
+Sub tools downloaded from CLIP STUDIO ASSETS (`Material/…/material_0.tool`) are encrypted and not
+read; once added to a palette in Clip Studio Paint they are in its `.todb`, or export them as `.sut`.
+
+Open: nothing in the interface shows the stock (M9), and whether Clip Studio Paint opens the `.sut`
 files Clippy writes for `.abr` brushes and with packed materials is untested.
 
 | File                                  | Hook                                                                  |
@@ -209,6 +212,7 @@ files Clippy writes for `.abr` brushes and with packed materials is untested.
 | `crates/engine/Cargo.toml`            | Depends on `photocraft-clippy-stock`                                  |
 | `crates/engine/src/clippy_cmds.rs`    | `clippy.stock.*`, `stock_dir`, `set_settings_dir`                     |
 | `crates/engine/src/prefs.rs`          | `clippy.stockDir` no longer hidden                                    |
+| `apps/photocraft/src/main.rs`         | Feature `clippy` calls `set_settings_dir` (default stock folder)      |
 
 ## Sub tools: mapping and data flow
 

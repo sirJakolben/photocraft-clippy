@@ -745,6 +745,8 @@ fn main() -> eframe::Result {
             #[cfg(feature = "clippy")]
             {
                 app.session.clippy.workspace_dir = services::config_dir().map(|dir| dir.join("workspaces"));
+                // The sub tool stock: `<settings folder>/stock` unless `clippy.stockDir` names one.
+                photocraft_engine::clippy_cmds::set_settings_dir(services::config_dir());
             }
             app.min_frame_ms = uncapped.then_some(1000.0 / 240.0);
             app.integrated_titlebar = cfg!(target_os = "macos");
