@@ -10,7 +10,8 @@
 //! `--mode clippy|photoshop` sets the interface first (default: the user's default, Clippy).
 //! `--lang` sets the UI language (default English). `--script` is a JSON array of `[method,
 //! params]` control-protocol calls (docs/control-protocol.md). `--menu A/B/…` then clicks the
-//! menu title `A` and points at the submenu rows `B`, … so the open menu shows in the image.
+//! menu title `A` and points at the submenu rows `B`, … so the open menu shows in the image;
+//! `--hover-at X,Y` points at a screen position afterwards (a row found by position only).
 //! `--no-extension` renders PhotoCraft itself, the baseline to compare the Photoshop mode with.
 
 use egui_kittest::kittest::Queryable;
@@ -66,15 +67,30 @@ fn main() {
         harness.run_steps(4);
     }
     if let Some(menu) = menu {
+        // Real pointer events: the menu titles open on the press, submenus on hover.
         let mut path = menu.split('/');
         if let Some(title) = path.next() {
-            harness.get_by_label(title).click();
+            let pos = harness.get_by_label(title).rect().center();
+            for pressed in [true, false] {
+                harness.event(egui::Event::PointerMoved(pos));
+                harness.event(egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::NONE });
+                harness.step();
+            }
             harness.run_steps(4);
         }
         for row in path {
-            harness.get_all_by_label(row).last().expect("the submenu row").hover();
-            harness.run_steps(6);
+            let Some(pos) = harness.query_all_by_label(row).last().map(|n| n.rect().center()) else {
+                eprintln!("--menu: no row `{row}`");
+                break;
+            };
+            harness.event(egui::Event::PointerMoved(pos));
+            harness.run_steps(8);
         }
+    }
+    // `--hover-at X,Y`: point at a screen position, e.g. a submenu row the accessibility tree lacks.
+    if let Some(pos) = arg(&args, "--hover-at").and_then(|s| s.split_once(',').and_then(|(x, y)| Some(egui::pos2(x.parse().ok()?, y.parse().ok()?)))) {
+        harness.event(egui::Event::PointerMoved(pos));
+        harness.run_steps(8);
     }
     // Let fade animations settle.
     for _ in 0..12 {
