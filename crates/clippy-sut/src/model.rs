@@ -17,6 +17,8 @@ pub(crate) mod col {
     pub const NAME: &str = "NodeName";
     pub const FIRST_CHILD: &str = "NodeFirstChildUuid";
     pub const NEXT: &str = "NodeNextUuid";
+    // Only the synthetic generator writes it so far.
+    #[cfg_attr(not(feature = "synth"), allow(dead_code))]
     pub const SELECTED: &str = "NodeSelectedUuid";
     pub const VARIANT: &str = "NodeVariantID";
     pub const INIT_VARIANT: &str = "NodeInitVariantID";

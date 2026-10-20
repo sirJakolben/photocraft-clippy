@@ -39,6 +39,21 @@ pub const MAX_WORKSPACE_NAME: usize = 64;
 pub const MAX_WORKSPACES: usize = 256;
 /// The `format` of a workspace file.
 const WORKSPACE_FORMAT: &str = "photocraft-clippy-workspace";
+/// Make a sub tool (`.sut`) the active one: `{"path": str}`.
+pub const SUBTOOL_SELECT: &str = "clippy.subtool.select";
+/// The active sub tool and how it maps to PhotoCraft.
+pub const SUBTOOL_GET: &str = "clippy.subtool.get";
+/// Write PhotoCraft's working copy (brush, tool options) into the active sub tool's `.sut`.
+pub const SUBTOOL_WRITE_BACK: &str = "clippy.subtool.writeBack";
+/// Back to the sub tool's initial settings (`NodeInitVariantID`).
+pub const SUBTOOL_RESET: &str = "clippy.subtool.reset";
+/// Make the current settings the sub tool's initial settings.
+pub const SUBTOOL_SAVE_AS_DEFAULT: &str = "clippy.subtool.saveAsDefault";
+/// Write PhotoCraft's current tool and brush as a new `.sut`: `{"path": str, "name": str?}`.
+pub const SUBTOOL_EXPORT: &str = "clippy.subtool.export";
+/// Every `clippy.subtool.*` command. `photocraft-clippy-ui` runs them (they read and write
+/// files and drive the shell's tool); the engine only lists them.
+pub const SUBTOOL_COMMANDS: [&str; 6] = [SUBTOOL_SELECT, SUBTOOL_GET, SUBTOOL_WRITE_BACK, SUBTOOL_RESET, SUBTOOL_SAVE_AS_DEFAULT, SUBTOOL_EXPORT];
 
 /// Which interface Clippy shows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -64,6 +79,9 @@ pub struct ClippyPrefs {
     pub stock_dir: String,
     /// The dock layout of each mode, by mode id (M2). JSON owned by `photocraft-clippy-ui`.
     pub layouts: Value,
+    /// The active sub tool's `.sut` file (M8); empty for none. Set by `clippy.subtool.select`;
+    /// the Clippy interface loads it at start and when it changes.
+    pub subtool: String,
 }
 
 /// Clippy's session state outside the preferences: where the saved workspaces live.
@@ -185,6 +203,36 @@ pub fn specs() -> Vec<CommandSpec> {
             run: |s, _| Ok(json!({"workspaces": workspace_names(s)})),
             journal: false,
         },
+        subtool_spec(
+            SUBTOOL_SELECT,
+            "Select Sub Tool",
+            r##"{"path":str} → {path,name,tool,supported,notice?,…}: make the .sut at `path` the active sub tool. Its settings become PhotoCraft's tool, brush and tool options (the .sut is the source of truth; later changes are written back into it). A sub tool PhotoCraft can't map is selected with a notice and leaves the tool as it is. Preference clippy.subtool"##,
+        ),
+        subtool_spec(
+            SUBTOOL_GET,
+            "Sub Tool Info",
+            r##"{} → {path,name,inputOp,outputOp,tool,supported,notice?,mapped:[rule],kept:[column]} or {path:null}: the active sub tool, the mapping rules that apply to it and the columns kept in the .sut without a PhotoCraft counterpart"##,
+        ),
+        subtool_spec(
+            SUBTOOL_WRITE_BACK,
+            "Write Back Sub Tool",
+            r##"{} → {written:[rule]}: write PhotoCraft's brush and tool options into the active sub tool's .sut (only the columns of changed settings; the rest stays as it is). The Clippy interface does this by itself whenever a setting changed and the pointer is up"##,
+        ),
+        subtool_spec(
+            SUBTOOL_RESET,
+            "Reset Sub Tool",
+            r##"{} → {path,…}: the active sub tool back to its initial settings (the .sut's NodeInitVariantID), saved and applied"##,
+        ),
+        subtool_spec(
+            SUBTOOL_SAVE_AS_DEFAULT,
+            "Register Sub Tool as Initial Settings",
+            r##"{} → {path}: the active sub tool's current settings become its initial settings (copied into its NodeInitVariantID)"##,
+        ),
+        subtool_spec(
+            SUBTOOL_EXPORT,
+            "Export Sub Tool",
+            r##"{"path":str,"name":str?} → {path,tool}: PhotoCraft's current tool, brush and tool options as a new .sut (for building sub tools from PhotoCraft settings)"##,
+        ),
     ]
     .into_iter()
     .chain(stock_specs())
@@ -361,6 +409,21 @@ mod store {
 
     pub fn remove(_: &Path, name: &str) -> Result<(), String> {
         Err(format!("no workspace named `{name}`"))
+    }
+}
+
+/// A `clippy.subtool.*` command. Without photocraft-clippy's interface (PhotoCraft, the CLI) it
+/// reports that it isn't available; the interface runs it before the engine is asked.
+fn subtool_spec(id: &'static str, label: &'static str, params: &'static str) -> CommandSpec {
+    CommandSpec {
+        id,
+        label,
+        menu: &[],
+        shortcut: None,
+        params,
+        enabled: |_| Ok(()),
+        run: |_, _| Err(EngineError::Other("sub tools (.sut) are only available in photocraft-clippy's Clippy interface".into())),
+        journal: false,
     }
 }
 
@@ -1087,6 +1150,18 @@ mod tests {
             assert!(s.execute(WORKSPACE_LOAD, json!({"name": name})).is_err(), "{name}");
             assert_eq!(s.prefs().clippy.layouts[LAYOUT_KEY], layout("layer"), "{name}");
         }
+    }
+
+    #[test]
+    fn subtool_commands_are_listed_but_refused_without_the_interface() {
+        let mut s = Session::new();
+        for id in SUBTOOL_COMMANDS {
+            assert!(crate::commands::find(id).is_some(), "{id}");
+            for p in [json!({}), Value::Null, json!({"path": "/nonexistent.sut"}), json!([1])] {
+                assert!(s.execute(id, p).is_err(), "{id}");
+            }
+        }
+        assert_eq!(s.prefs().clippy.subtool, "");
     }
 
     #[test]

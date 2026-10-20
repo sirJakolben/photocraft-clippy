@@ -4872,6 +4872,8 @@ dependencies = [
  "egui_kittest",
  "log",
  "photocraft-clippy-stock",
+ "photocraft-clippy-sut",
+ "photocraft-color",
  "photocraft-engine",
  "photocraft-ui-egui",
  "serde",

@@ -391,6 +391,8 @@ fn command_uses_ambient_path(id: &str, params: &Value) -> bool {
             params.get("path").is_some() || ["importKys", "exportKys", "summarize"].iter().any(|k| params.get(*k).and_then(|v| v.get("path")).is_some())
         }
         "plugin.reload" => true,
+        // photocraft-clippy: sub tool files read or written by path (CLIPPY.md).
+        "clippy.subtool.select" | "clippy.subtool.export" => params.get("path").is_some(),
         _ => false,
     }
 }
@@ -888,6 +890,10 @@ mod tests {
 
     fn documents_filesystem_path_params(id: &str, params: &str) -> bool {
         if matches!(id, "prefs.get" | "prefs.reset") {
+            return false;
+        }
+        // photocraft-clippy: these report the active sub tool's file; they take no path.
+        if matches!(id, "clippy.subtool.get" | "clippy.subtool.writeBack" | "clippy.subtool.reset" | "clippy.subtool.saveAsDefault") {
             return false;
         }
         // These registry descriptions refer to document vector paths, not host files.

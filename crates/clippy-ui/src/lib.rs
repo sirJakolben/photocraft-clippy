@@ -16,14 +16,26 @@ macro_rules! tl {
 }
 
 pub mod dock;
+pub mod mapping;
 pub mod mode;
+pub mod subtool;
 
 use photocraft_ui_egui::extension::Extension;
 use photocraft_ui_egui::{PhotocraftApp, Services, panels};
 
 /// Clippy's interface as an extension of PhotoCraft's.
 pub fn extension() -> Extension {
-    Extension { active: mode::active, ui: draw, menu_items, pref_paths: &[mode::PREF_PATH], interface_prefs: mode::interface_prefs, invoke }
+    Extension {
+        active: mode::active,
+        ui: draw,
+        menu_items,
+        pref_paths: &[mode::PREF_PATH],
+        interface_prefs: mode::interface_prefs,
+        invoke,
+        command: subtool::command,
+        frame: subtool::frame,
+        hides_brush_presets: true,
+    }
 }
 
 /// Install Clippy in the app's services, before the app is created.

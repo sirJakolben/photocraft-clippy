@@ -3256,3 +3256,14 @@ curves	Smooth	Glätten
 	Expand Area	Bereich ausklappen
 	The workspace is locked.	Der Arbeitsbereich ist gesperrt.
 	A workspace with this name exists.	Ein Arbeitsbereich mit diesem Namen existiert bereits.
+# photocraft-clippy: sub tools (crates/clippy-ui/src/subtool.rs)
+	Sub tools belong to the Clippy interface (Window › Interface › Clippy).	Sub-Tools gehören zur Clippy-Oberfläche (Fenster › Benutzeroberfläche › Clippy).
+	The sub tool couldn't be read:	Das Sub-Tool konnte nicht gelesen werden:
+	The sub tool couldn't be saved:	Das Sub-Tool konnte nicht gespeichert werden:
+	Sub tool files can't be opened in the web version.	Sub-Tool-Dateien lassen sich in der Web-Version nicht öffnen.
+	Sub tool files can't be saved in the web version.	Sub-Tool-Dateien lassen sich in der Web-Version nicht speichern.
+	The sub tool has no settings (no NodeVariantID).	Das Sub-Tool hat keine Einstellungen (keine NodeVariantID).
+	The sub tool is selected; PhotoCraft's tool stays as it is.	Das Sub-Tool ist ausgewählt; das Werkzeug von PhotoCraft bleibt, wie es ist.
+	No sub tool is selected.	Es ist kein Sub-Tool ausgewählt.
+	The sub tool has no initial settings (no NodeInitVariantID).	Das Sub-Tool hat keine Anfangseinstellungen (keine NodeInitVariantID).
+	PhotoCraft erases on the current layer only; erasing all layers stays in the sub tool.	PhotoCraft radiert nur auf der aktuellen Ebene; das Radieren aller Ebenen bleibt im Sub-Tool gespeichert.

@@ -8,6 +8,9 @@ rust-version.workspace = true
 
 [dependencies]
 photocraft-clippy-stock = { workspace = true }
+# The .sut format (M8 maps it to PhotoCraft's tools and brushes).
+photocraft-clippy-sut = { path = "../clippy-sut" }
+photocraft-color = { workspace = true }
 photocraft-engine = { workspace = true }
 photocraft-ui-egui = { workspace = true }
 egui = { workspace = true }
@@ -17,6 +20,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 
 [dev-dependencies]
+photocraft-clippy-sut = { path = "../clippy-sut", features = ["synth"] }
 # Contexts made in tests lay out text with egui's own fonts, as in photocraft-ui-egui's tests.
 egui = { workspace = true, features = ["default_fonts"] }
 egui_kittest = { workspace = true, features = ["wgpu", "snapshot", "eframe"] }
