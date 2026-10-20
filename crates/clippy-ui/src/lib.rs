@@ -1,4 +1,4 @@
-//! `photocraft-clippy-ui`: Clippy (PhotoCraft Extension), a Clip Studio Paint–style interface on
+//! `photocraft-clippy-ui`: photocraft-clippy, a Clip Studio Paint–style interface on
 //! top of PhotoCraft's. It plugs into `photocraft-ui-egui` as an
 //! [`Extension`](photocraft_ui_egui::extension::Extension), which the desktop app installs with
 //! [`install`] in its `clippy` feature; PhotoCraft without it is unchanged. Layer 6

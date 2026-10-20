@@ -1,4 +1,4 @@
-//! Who this build is: PhotoCraft, or Clippy (PhotoCraft Extension) when built with the `clippy`
+//! Who this build is: PhotoCraft, or photocraft-clippy when built with the `clippy`
 //! feature (`cargo build -p photocraft --features clippy --bin photocraft-clippy`).
 //!
 //! The two must run side by side for one user, so everything that would make them share state or
@@ -17,7 +17,7 @@ pub const APP_ID: &str = "io.github.sirjakolben.PhotocraftClippy";
 #[cfg(not(feature = "clippy"))]
 pub const NAME: &str = "PhotoCraft";
 #[cfg(feature = "clippy")]
-pub const NAME: &str = "Clippy (PhotoCraft Extension)";
+pub const NAME: &str = "photocraft-clippy";
 
 /// The executable on the PATH (an XWayland relaunch outside Flatpak and AppImage starts it).
 #[cfg(not(feature = "clippy"))]

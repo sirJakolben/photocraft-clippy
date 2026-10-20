@@ -1,4 +1,4 @@
-# Clippy (PhotoCraft Extension)
+# photocraft-clippy
 
 Clippy is a fork of [PhotoCraft](https://github.com/storytold/photocraft) that adds a Clip Studio
 Paint–style interface: docking palettes on every window edge, tools holding sub-tool groups the
@@ -29,7 +29,7 @@ Clippy and an installed PhotoCraft run side by side for one user without sharing
 | Binary                   | `photocraft`                     | `photocraft-clippy`                       |
 | App id, window class     | `ai.storyteller.photocraft`      | `io.github.sirjakolben.PhotocraftClippy`  |
 | Settings folder (Linux)  | `~/.config/photocraft`           | `~/.config/photocraft-clippy`             |
-| Window title, About      | PhotoCraft                       | Clippy (PhotoCraft Extension)             |
+| Window title, About      | PhotoCraft                       | photocraft-clippy             |
 | Icon                     | `assets/app-icon/`               | `assets/app-icon-clippy/`                 |
 | Desktop entry            | `packaging/linux/ai.storyteller.photocraft.desktop` | `packaging/linux/io.github.sirjakolben.PhotocraftClippy.desktop` |
 

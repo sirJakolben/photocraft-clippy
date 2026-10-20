@@ -64,7 +64,7 @@ pub(crate) fn interface_prefs(ui: &mut egui::Ui, values: &mut Value, search: &st
     let t = Tokens::get(ui.ctx());
     egui::Frame::new().stroke(egui::Stroke::new(1.0, t.card_border)).corner_radius(t.radius).inner_margin(10.0).show(ui, |ui| {
         ui.set_width(ui.available_width());
-        ui.label(egui::RichText::new("Clippy (PhotoCraft Extension)").strong().color(t.text));
+        ui.label(egui::RichText::new("photocraft-clippy").strong().color(t.text));
         ui.add_space(4.0);
         egui::Grid::new("prefs-grid-clippy").num_columns(2).spacing([14.0, 7.0]).min_col_width(150.0).show(ui, |ui| {
             ui.label(egui::RichText::new(title).color(t.text_dim));

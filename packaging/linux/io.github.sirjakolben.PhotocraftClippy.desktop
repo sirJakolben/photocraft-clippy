@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=Clippy (PhotoCraft Extension)
+Name=photocraft-clippy
 GenericName=Painting and Image Editor
 Comment=PhotoCraft with a Clip Studio Paint–style interface
 Exec=photocraft-clippy %F

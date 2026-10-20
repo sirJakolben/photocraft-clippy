@@ -1,4 +1,4 @@
-Clippy (PhotoCraft Extension) app icon (clippy.svg and every file derived from it in this
+photocraft-clippy app icon (clippy.svg and every file derived from it in this
 directory: hicolor/).
 
 Original artwork made for this project by its owner (@sirJakolben): drawn as SVG by hand, no

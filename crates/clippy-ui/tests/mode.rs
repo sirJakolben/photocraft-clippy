@@ -100,7 +100,7 @@ fn preferences_switch_the_mode_on_ok() {
         let ctx = h.ctx.clone();
         menus::invoke(h.state_mut(), &ctx, "edit.preferences.interface", json!({})).unwrap();
         h.run_steps(4);
-        h.get_by_label("Clippy (PhotoCraft Extension)");
+        h.get_by_label("photocraft-clippy");
         h.get_by_value("Clippy").click();
         h.run_steps(3);
         h.get_by_label("Photoshop").click();
@@ -139,7 +139,7 @@ fn photocraft_preferences_have_no_clippy_rows() {
     let ctx = h.ctx.clone();
     menus::invoke(h.state_mut(), &ctx, "edit.preferences.interface", json!({})).unwrap();
     h.run_steps(4);
-    assert!(h.query_by_label("Clippy (PhotoCraft Extension)").is_none());
+    assert!(h.query_by_label("photocraft-clippy").is_none());
     let values = h.state().ui.dialogs.iter().find_map(|d| d.fields.get("values").cloned()).unwrap();
     assert!(values.get("clippy").is_none(), "{values}");
 }

@@ -1,4 +1,4 @@
-//! Reader and writer for Clip Studio Paint tool files, for Clippy (PhotoCraft Extension).
+//! Reader and writer for Clip Studio Paint tool files, for photocraft-clippy.
 //!
 //! - `.todb` (the whole tool tree of a Clip Studio Paint installation) and `.sut` (one exported sub
 //!   tool with its brush tips) are SQLite databases with the same tables: [`Todb`], [`Sut`].

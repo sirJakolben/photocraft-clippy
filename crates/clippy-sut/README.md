@@ -1,6 +1,6 @@
 # photocraft-clippy-sut
 
-Reader and writer for Clip Studio Paint tool files, for Clippy (PhotoCraft Extension): sub tools
+Reader and writer for Clip Studio Paint tool files, for photocraft-clippy: sub tools
 (`.sut`), tool databases (`.todb`) and brush tip materials (`.layer`). No workspace dependencies
 (layer 0); SQLite (bundled through `rusqlite`) and tar are desktop-only, the blob and `.layer`
 decoders also build for wasm.

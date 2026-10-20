@@ -2,7 +2,7 @@
   <img alt="Clippy" src="assets/app-icon-clippy/clippy.svg" width="128">
 </p>
 
-<h1 align="center">Clippy (PhotoCraft Extension)</h1>
+<h1 align="center">photocraft-clippy</h1>
 
 <p align="center">
   <b>PhotoCraft with a Clip Studio Paint–style interface.</b><br>

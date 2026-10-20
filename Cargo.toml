@@ -37,7 +37,7 @@ photocraft-ui-egui = { path = "crates/ui-egui" }
 photocraft-testkit = { path = "crates/testkit" }
 photocraft-tablet = { path = "crates/tablet" }
 photocraft-ipp = { path = "crates/ipp" }
-# Clippy (PhotoCraft Extension), see CLIPPY.md
+# photocraft-clippy, see CLIPPY.md
 photocraft-clippy-stock = { path = "crates/clippy-stock" }
 photocraft-clippy-ui = { path = "crates/clippy-ui" }
 

@@ -1,4 +1,4 @@
-//! Clippy (PhotoCraft Extension): the engine side of its Clip Studio Paint–style interface, the
+//! photocraft-clippy: the engine side of its Clip Studio Paint–style interface, the
 //! `clippy` preferences and the `clippy.*` commands. PhotoCraft registers the commands too but
 //! shows them nowhere (no menu item, no shortcut) and never reads the preferences: only the
 //! `photocraft-clippy` build (crate `photocraft-clippy-ui`) draws what they change. See `CLIPPY.md`.

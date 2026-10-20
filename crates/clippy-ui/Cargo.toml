@@ -1,6 +1,6 @@
 [package]
 name = "photocraft-clippy-ui"
-description = "Clippy (PhotoCraft Extension): a Clip Studio Paint–style interface for PhotoCraft"
+description = "photocraft-clippy: a Clip Studio Paint–style interface for PhotoCraft"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

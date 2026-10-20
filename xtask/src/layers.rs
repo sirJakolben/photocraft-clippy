@@ -68,7 +68,7 @@ pub const TABLE: &[(&str, Class)] = &[
     ("ui-egui", Class::Layer(6)),
     ("automation", Class::Layer(6)),
     ("platform", Class::Layer(6)),
-    // Clippy (PhotoCraft Extension), see CLIPPY.md
+    // photocraft-clippy, see CLIPPY.md
     ("clippy-stock", Class::Layer(4)),
     ("clippy-ui", Class::Layer(6)),
     ("testkit", Class::Testkit),

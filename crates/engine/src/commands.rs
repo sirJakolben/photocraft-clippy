@@ -1539,7 +1539,7 @@ fn build() -> Vec<CommandSpec> {
     v.extend(crate::mask_view_cmds::specs());
     v.extend(crate::layer_mask_props_cmds::specs());
     v.extend(crate::actions_cmds::specs());
-    // Clippy (PhotoCraft Extension): its interface commands (CLIPPY.md).
+    // photocraft-clippy: its interface commands (CLIPPY.md).
     v.extend(crate::clippy_cmds::specs());
     // The dispatch guard's unit test needs a command that panics on purpose (REL-3).
     #[cfg(test)]

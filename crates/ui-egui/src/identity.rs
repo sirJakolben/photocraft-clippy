@@ -46,17 +46,17 @@ pub const PHOTOCRAFT: Identity = Identity {
 /// Clippy's GitHub repository.
 const CLIPPY_GITHUB: &str = "https://github.com/sirJakolben/photocraft-clippy";
 
-/// Clippy (PhotoCraft Extension): a Clip Studio Paint–style interface on top of PhotoCraft.
+/// photocraft-clippy: a Clip Studio Paint–style interface on top of PhotoCraft.
 pub const CLIPPY: Identity = Identity {
-    name: "Clippy (PhotoCraft Extension)",
-    start_title: "Clippy",
-    start_subtitle: "PhotoCraft Extension",
-    tagline: "Clippy (PhotoCraft Extension) — a Clip Studio Paint–style interface for PhotoCraft.",
+    name: "photocraft-clippy",
+    start_title: "photocraft-clippy",
+    start_subtitle: "open source",
+    tagline: "photocraft-clippy — a Clip Studio Paint–style interface for PhotoCraft.",
     based_on: "Based on PhotoCraft by the ArtCraft team. Not affiliated with CELSYS or the ArtCraft team.",
     hidden_help: &["help.discord", "help.website", "help.artcraftWebsite"],
     urls: &[("help.github", CLIPPY_GITHUB), ("help.reportIssue", "https://github.com/sirJakolben/photocraft-clippy/issues")],
-    labels: &[("help.github", "Clippy on GitHub"), ("help.about", "About Clippy")],
-    about_links: &[("Clippy on GitHub", CLIPPY_GITHUB), ("PhotoCraft on GitHub", "https://github.com/storytold/photocraft")],
+    labels: &[("help.github", "photocraft-clippy on GitHub"), ("help.about", "About photocraft-clippy")],
+    about_links: &[("photocraft-clippy on GitHub", CLIPPY_GITHUB), ("PhotoCraft on GitHub", "https://github.com/storytold/photocraft")],
     icon_png: Some(include_bytes!("../../../assets/app-icon-clippy/hicolor/128x128/apps/io.github.sirjakolben.PhotocraftClippy.png")),
 };
 
