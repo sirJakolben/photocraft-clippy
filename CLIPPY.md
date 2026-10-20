@@ -64,7 +64,7 @@ and without one every frame, menu and Preferences page is PhotoCraft's own.
 | File                                  | Hook                                                                          |
 |---------------------------------------|-------------------------------------------------------------------------------|
 | `crates/clippy-ui`                    | New (L6): Clippy's interface, an `Extension` of ui-egui; `mode.rs` the switch |
-| `crates/clippy-stock`                 | New (L4): the sub tool stock on disk (empty until M7)                         |
+| `crates/clippy-stock`                 | New (L4): the sub tool stock on disk (see Sub tool stock)                     |
 | `crates/engine/src/clippy_cmds.rs`    | New: `ClippyPrefs`, commands `clippy.mode.set/clippy/photoshop`               |
 | `crates/engine/src/{lib,commands}.rs` | Module and `v.extend(clippy_cmds::specs())`                                   |
 | `crates/engine/src/prefs.rs`          | Field `Preferences::clippy`; unused keys in `HIDDEN_UNTIL_IMPLEMENTED`        |
@@ -166,6 +166,49 @@ saved brushes, presets and `.abr` imports paint and save exactly as upstream.
 `crates/paint/src/golden_tests.rs` pins a digest of the dabs and pixels of strokes through every
 brush section and built-in preset, recorded on the upstream engine: if it moves, an old brush
 paints differently. Behaviour tests are in `crates/paint/src/csp_tests.rs`.
+
+## Sub tool stock
+
+Clippy's tools, sub tool groups and sub tools are folders and files (crate
+`photocraft-clippy-stock`, its README has the details):
+
+```text
+<stock>/<Tool>/<Group>/<Sub tool>.sut     Clip Studio Paint's own sub tool format
+<stock>[/<Tool>[/<Group>]]/_clippy.json   display name, icon, shortcut, order of the entries
+```
+
+The stock folder is the preference `clippy.stockDir` (an absolute path, chosen freely); empty means
+`stock` in the settings folder, which the app names through `clippy_cmds::set_settings_dir`.
+What a file manager does there shows in Clippy without a restart: `LiveStock` watches the folder
+(200 ms batches) and keeps the selected sub tool selected when it moves. Missing metadata means
+folder names, the default icon and alphabetical order (entries not listed come last); a broken
+`.sut` is an entry with a warning. Moves and imports copy files byte for byte, a rename changes
+only the name inside the `.sut`, a copy only its node UUID, so settings PhotoCraft doesn't use
+stay as they were. Deletions go to the trash. A `.todb` is only read, never written.
+
+The engine commands change the stock on disk and keep no state (stock paths are `Tool`,
+`Tool/Group`, `Tool/Group/Sub tool`, by folder and file names):
+
+| Command                                   | What it does                                                        |
+|-------------------------------------------|---------------------------------------------------------------------|
+| `clippy.stock.list`                       | The stock in display order, with warnings                           |
+| `clippy.stock.tool.create`, `group.create`| New folder, last; a clash gets a number                             |
+| `clippy.stock.rename`, `delete`           | Rename (a clash is an error); move to the trash                     |
+| `clippy.stock.move`, `copy`               | Into a folder at an index; copies are independent ("G-Pen 2")       |
+| `clippy.stock.sort`, `meta.set`           | Order of a folder; display name, icon, shortcut                     |
+| `clippy.stock.import`                     | `.sut` into a group; `.todb` with its material folder; `.abr` as a new group of the brush tool |
+| `clippy.stock.export`, `saveAs`           | Copy of the stock or one entry; Save Brushes As (works there after) |
+
+Open: the app does not call `set_settings_dir` yet (without it a stock folder must be chosen),
+nothing in the interface shows the stock (M9), and whether Clip Studio Paint opens the `.sut`
+files Clippy writes for `.abr` brushes and with packed materials is untested.
+
+| File                                  | Hook                                                                  |
+|---------------------------------------|-----------------------------------------------------------------------|
+| `crates/clippy-stock`                 | The stock: loading, operations, import, export, watcher               |
+| `crates/engine/Cargo.toml`            | Depends on `photocraft-clippy-stock`                                  |
+| `crates/engine/src/clippy_cmds.rs`    | `clippy.stock.*`, `stock_dir`, `set_settings_dir`                     |
+| `crates/engine/src/prefs.rs`          | `clippy.stockDir` no longer hidden                                    |
 
 ## Trademarks
 
